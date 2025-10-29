@@ -1,4 +1,4 @@
-# main.py (updated with new notification system)
+# main.py (updated with rift notifications)
 import asyncio
 from datetime import datetime
 import pytz
@@ -17,7 +17,7 @@ from db import (
     get_all_bosses_for_guild,
     get_all_users,
 )
-from scheduler import setup_scheduler, send_notification
+from scheduler import setup_scheduler, send_notification, send_rift_notification
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -213,6 +213,14 @@ async def cmd_test_notification(message: types.Message):
         await message.answer(f"--- Тест для {time_key} ---")
         await send_notification(bot, time_key)
         await asyncio.sleep(1)  # Небольшая задержка между сообщениями
+
+
+# -------------------- Test Rift Notification --------------------
+@dp.message(Command("test_rift"))
+async def cmd_test_rift(message: types.Message):
+    """Тестовая команда для проверки уведомлений о разломах"""
+    await message.answer("🌀 Тестовое уведомление о разломах:")
+    await send_rift_notification(bot)
 
 
 # -------------------- Debug / Admin utilities --------------------

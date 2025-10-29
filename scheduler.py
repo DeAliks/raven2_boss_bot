@@ -124,6 +124,24 @@ async def send_notification(bot: Bot, time_key: str):
                 print(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
 
 
+async def send_rift_notification(bot: Bot):
+    """
+    Отправляет уведомление о разломах за 10 минут до появления
+    """
+    users = get_all_users()
+
+    message = "🌀 <b>РАЗЛОМЫ СКОРО ПОЯВЯТСЯ!</b>\n\n"
+    message += "⏰ Через 10 минут откроются разломы\n"
+    message += "⚔️ Готовьтесь к битве!\n\n"
+    message += "💎 Не пропустите возможность получить ценные награды!"
+
+    for user_id, guild in users:
+        try:
+            await bot.send_message(user_id, message, parse_mode="HTML")
+        except Exception as e:
+            print(f"Не удалось отправить сообщение о разломах пользователю {user_id}: {e}")
+
+
 def setup_scheduler(bot: Bot):
     scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 
@@ -142,6 +160,20 @@ def setup_scheduler(bot: Bot):
             args=[bot, time_key]
         )
         print(f"✅ Настроено уведомление для {time_key} (запуск в {time_str})")
+
+    # Уведомления о разломах за 10 минут до появления (14:20 и 22:20)
+    rift_times = ['14:20', '22:20']
+
+    for time_str in rift_times:
+        hour, minute = map(int, time_str.split(':'))
+        scheduler.add_job(
+            send_rift_notification,
+            "cron",
+            hour=hour,
+            minute=minute,
+            args=[bot]
+        )
+        print(f"✅ Настроено уведомление о разломах (запуск в {time_str})")
 
     scheduler.start()
     print("✅ Планировщик уведомлений запущен")
