@@ -1,41 +1,16 @@
+# scheduler.py
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from datetime import datetime
 import pytz
 from config import TIMEZONE
-from db import get_all_users, get_bosses_for_guild_and_slot
-from bosses_data import BOSSES_SCHEDULE
+from db import get_all_users
+from google_sheets_manager import sheets_manager
 
 
 def get_schedule_key_for_date(dt: datetime) -> str:
-    cycle_keys = list(BOSSES_SCHEDULE.keys())
-    if not cycle_keys:
-        return dt.strftime("%d.%m")
-
-    base_key = cycle_keys[0]
-    try:
-        base_day, base_month = map(int, base_key.split("."))
-    except Exception:
-        return dt.strftime("%d.%m")
-
-    year = dt.year
-    try:
-        base_dt = datetime(year, base_month, base_day)
-    except ValueError:
-        return dt.strftime("%d.%m")
-
-    if base_dt.date() > dt.date():
-        try:
-            base_dt = datetime(year - 1, base_month, base_day)
-        except ValueError:
-            base_dt = datetime(year, base_month, base_day)
-
-    days_diff = (dt.date() - base_dt.date()).days
-    if days_diff < 0:
-        days_diff = abs(days_diff)
-
-    index = days_diff % len(cycle_keys)
-    return cycle_keys[index]
+    # Используем текущую дату
+    return dt.strftime("%d.%m")
 
 
 async def send_notification(bot: Bot, time_key: str):
@@ -54,7 +29,7 @@ async def send_notification(bot: Bot, time_key: str):
         '11:30': {'tiers': ['tier1'], 'free_farm': False},
         '15:30': {'tiers': ['tier1', 'tier2'], 'free_farm': False},
         '19:30': {'tiers': ['tier1'], 'free_farm': False},
-        '23:30': {'tiers': ['tier1', 'tier2', 'tier3'], 'free_farm': False}  # НЕ free farm
+        '23:30': {'tiers': ['tier1', 'tier2', 'tier3', 'tier4', 'tier5'], 'free_farm': False}  # Все тиры
     }
 
     if time_key not in tiers_info:
@@ -88,17 +63,17 @@ async def send_notification(bot: Bot, time_key: str):
 
         else:
             # Для обычного времени показываем боссов гильдии
-            if guild not in BOSSES_SCHEDULE.get(schedule_key, {}):
-                continue
-
-            # Получаем всех боссов гильдии на этот день
-            all_bosses = BOSSES_SCHEDULE[schedule_key][guild]
+            # Получаем данные из Google Таблицы
+            bosses_data = sheets_manager.get_today_bosses()
 
             # Фильтруем только нужные тиры
             bosses_to_show = {}
             for tier in target_tiers:
-                if tier in all_bosses:
-                    bosses_to_show[tier] = all_bosses[tier]
+                if tier in bosses_data:
+                    # Фильтруем боссов только для текущей гильдии
+                    guild_bosses = [boss for guild_name, boss in bosses_data[tier] if guild_name == guild]
+                    if guild_bosses:
+                        bosses_to_show[tier] = guild_bosses
 
             if not bosses_to_show:
                 continue
@@ -109,8 +84,26 @@ async def send_notification(bot: Bot, time_key: str):
 
             # Добавляем боссов по тирам
             for tier, bosses in bosses_to_show.items():
-                emoji = "🟢" if tier == "tier1" else "🟡" if tier == "tier2" else "🔴"
-                tier_name = "1 тир" if tier == "tier1" else "2 тир" if tier == "tier2" else "3 тир"
+                # Эмодзи для разных тиров
+                if tier == "tier1":
+                    emoji = "🟢"
+                    tier_name = "1 тир"
+                elif tier == "tier2":
+                    emoji = "🟡"
+                    tier_name = "2 тир"
+                elif tier == "tier3":
+                    emoji = "🔴"
+                    tier_name = "3 тир"
+                elif tier == "tier4":
+                    emoji = "🔵"
+                    tier_name = "4 тир"
+                elif tier == "tier5":
+                    emoji = "🟣"
+                    tier_name = "5 тир"
+                else:
+                    emoji = "⚪"
+                    tier_name = tier
+
                 message += f"{emoji} <b>{tier_name}</b>:\n"
                 for boss in bosses:
                     message += f"• {boss}\n"
@@ -157,7 +150,9 @@ def setup_scheduler(bot: Bot):
             "cron",
             hour=hour,
             minute=minute,
-            args=[bot, time_key]
+            args=[bot, time_key],
+            misfire_grace_time=300,  # Разрешаем выполнение в течение 5 минут после пропущенного времени
+            coalesce=True  # Объединяем пропущенные выполнения
         )
         print(f"✅ Настроено уведомление для {time_key} (запуск в {time_str})")
 
@@ -171,9 +166,23 @@ def setup_scheduler(bot: Bot):
             "cron",
             hour=hour,
             minute=minute,
-            args=[bot]
+            args=[bot],
+            misfire_grace_time=300,  # Разрешаем выполнение в течение 5 минут после пропущенного времени
+            coalesce=True  # Объединяем пропущенные выполнения
         )
         print(f"✅ Настроено уведомление о разломах (запуск в {time_str})")
 
+    # Настраиваем планировщик для более гибкого управления пропущенными задачами
+    scheduler.configure(
+        misfire_grace_time=300,  # 5 минут для всех задач
+        coalesce=True,  # Объединять пропущенные выполнения
+        max_instances=3  # Максимальное количество одновременно выполняющихся задач
+    )
+
     scheduler.start()
     print("✅ Планировщик уведомлений запущен")
+
+    # Проверяем ближайшие выполнения
+    print("\n📅 Ближайшие запланированные выполнения:")
+    for job in scheduler.get_jobs():
+        print(f"  - {job.name}: {job.next_run_time}")
