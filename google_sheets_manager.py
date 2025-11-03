@@ -28,7 +28,7 @@ class GoogleSheetsManager:
             self.gc = gspread.service_account(filename=credentials_file)
 
             # URL вашей таблицы
-            spreadsheet_url = "https://docs.google.com/spreadsheets/d/1juCUmpWicnz8OQvUgzBqAI9zVnm1RM1k-Hcj1-N4v3Y/edit"
+            spreadsheet_url = "https://docs.google.com/spreadsheets/d/1FkMJd5Oj1MFy4TQZm379PDT3wu0gAqaxdgUgvRr9e-c/edit?gid=275501199#gid=275501199"
             self.spreadsheet = self.gc.open_by_url(spreadsheet_url)
             self.connected = True
             logger.info("✅ Успешное подключение к Google Таблице")
@@ -54,87 +54,149 @@ class GoogleSheetsManager:
 
             bosses_data = {'tier1': [], 'tier2': [], 'tier3': [], 'tier4': [], 'tier5': []}
 
-            # Находим индекс колонки для сегодняшней даты
-            date_row = all_data[0]  # Первая строка с датами
-            target_col_index = -1
+            # Ищем дату в первой строке - каждая дата занимает два столбца
+            header_row = all_data[0]  # Первая строка с датами
+            logger.info(f"📅 Заголовок таблицы: {header_row}")
 
-            for i, cell in enumerate(date_row):
-                if cell.strip() == today:
+            # Ищем индекс колонки для сегодняшней даты
+            target_col_index = -1
+            for i in range(0, len(header_row), 2):  # Перебираем через один столбец
+                if i < len(header_row) and header_row[i].strip() == today:
                     target_col_index = i
-                    logger.info(f"✅ Найдена колонка для даты {today}: индекс {i}")
+                    logger.info(f"✅ Найдена колонка для даты {today}: индекс {i} (столбцы {i} и {i + 1})")
                     break
 
             if target_col_index == -1:
                 logger.error(f"❌ Дата {today} не найдена в таблице")
+                logger.error(
+                    f"Доступные даты в заголовке: {[header_row[i] for i in range(0, len(header_row), 2) if header_row[i].strip()]}")
                 return bosses_data
 
-            # Проходим по всем строкам и собираем данные для целевой даты
-            current_tier = None
+            # Определяем границы каждого раздела (тира)
+            sections = self._find_section_boundaries(all_data)
 
-            for i, row in enumerate(all_data):
-                if not row:
+            # Обрабатываем каждый раздел
+            for section_name, start_row, end_row in sections:
+                logger.info(f"🔍 Обрабатываем раздел '{section_name}' (строки {start_row + 1}-{end_row + 1})")
+
+                # Определяем тир на основе названия раздела
+                tier = self._get_tier_from_section_name(section_name)
+                if not tier:
                     continue
 
-                first_cell = row[0].strip() if row[0] else ""
+                # Обрабатываем строки в этом разделе
+                for row_idx in range(start_row, end_row + 1):
+                    if row_idx >= len(all_data):
+                        continue
 
-                # Проверяем, является ли строка заголовком тира
-                if 'Тир 1' in first_cell or 'тир 1' in first_cell.lower():
-                    current_tier = 'tier1'
-                    logger.info("🎯 Найден раздел: Тир 1")
-                elif 'Тир 2' in first_cell or 'тир 2' in first_cell.lower():
-                    current_tier = 'tier2'
-                    logger.info("🎯 Найден раздел: Тир 2")
-                elif 'Тир 3' in first_cell or 'тир 3' in first_cell.lower():
-                    current_tier = 'tier3'
-                    logger.info("🎯 Найден раздел: Тир 3")
-                elif 'Тир 4' in first_cell or 'тир 4' in first_cell.lower():
-                    current_tier = 'tier4'
-                    logger.info("🎯 Найден раздел: Тир 4")
-                elif 'Тир 5' in first_cell or 'тир 5' in first_cell.lower():
-                    current_tier = 'tier5'
-                    logger.info("🎯 Найден раздел: Тир 5")
-                elif 'Боссы бездны' in first_cell:
-                    current_tier = 'abyss'
-                    logger.info("🎯 Найден раздел: Боссы бездны")
-                elif current_tier and len(row) > target_col_index + 1:
-                    # Берем данные из колонки для целевой даты (гильдия) и следующей колонки (босс)
-                    guild_cell = row[target_col_index].strip() if len(row) > target_col_index else ""
-                    boss_cell = row[target_col_index + 1].strip() if len(row) > target_col_index + 1 else ""
+                    row = all_data[row_idx]
+                    if len(row) <= target_col_index + 1:
+                        continue
 
-                    # Проверяем, что это не заголовок и не пустые данные
+                    guild_cell = row[target_col_index].strip() if target_col_index < len(row) and row[
+                        target_col_index] else ""
+                    boss_cell = row[target_col_index + 1].strip() if target_col_index + 1 < len(row) and row[
+                        target_col_index + 1] else ""
+
+                    # Проверяем, что это данные о боссе
                     if (guild_cell and
-                            guild_cell not in ['Гильдия', 'ГильдияБоссы'] and
+                            guild_cell not in ['Гильдия', 'ГильдияБоссы', ''] and
+                            boss_cell and
+                            boss_cell not in ['Боссы', ''] and
                             not any(x in guild_cell for x in ['Тир', 'тир', 'боссы', 'Боссы']) and
                             '.' not in guild_cell and  # не дата
-                            boss_cell and
-                            not boss_cell.isdigit()):  # не номер
+                            not guild_cell.isdigit()):  # не номер
 
                         # Нормализуем названия гильдий
                         guild_normalized = self.normalize_guild_name(guild_cell)
 
+                        if not guild_normalized:
+                            continue
+
                         # Для боссов бездны определяем тир по скобкам
-                        if current_tier == 'abyss':
+                        if tier == 'abyss':
                             tier_from_boss = self.extract_tier_from_boss_name(boss_cell)
-                            if tier_from_boss and guild_normalized:
+                            if tier_from_boss:
                                 bosses_data[tier_from_boss].append((guild_normalized, boss_cell))
                                 logger.info(
                                     f"✅ Добавлен босс бездны: {guild_normalized} - {boss_cell} ({tier_from_boss})")
-                        elif guild_normalized:
-                            bosses_data[current_tier].append((guild_normalized, boss_cell))
-                            logger.info(f"✅ Добавлен босс: {guild_normalized} - {boss_cell} ({current_tier})")
+                        else:
+                            bosses_data[tier].append((guild_normalized, boss_cell))
+                            logger.info(f"✅ Добавлен босс: {guild_normalized} - {boss_cell} ({tier})")
 
             # Логируем результаты
             logger.info("📊 Итоговые данные:")
+            total_bosses = 0
             for tier, bosses in bosses_data.items():
                 logger.info(f"  {tier}: {len(bosses)} боссов")
+                total_bosses += len(bosses)
                 for guild, boss in bosses:
                     logger.info(f"    {guild}: {boss}")
+
+            logger.info(f"📈 Всего найдено боссов: {total_bosses}")
 
             return bosses_data
 
         except Exception as e:
             logger.error(f"❌ Ошибка при чтении данных из Google Таблицы: {e}")
             return {'tier1': [], 'tier2': [], 'tier3': [], 'tier4': [], 'tier5': []}
+
+    def _find_section_boundaries(self, all_data):
+        """Находит границы разделов (тиров) в таблице."""
+        sections = []
+        current_section = None
+        section_start = -1
+
+        for i, row in enumerate(all_data):
+            if not row:
+                continue
+
+            first_cell = row[0].strip() if row[0] else ""
+
+            # Проверяем, является ли строка началом нового раздела
+            section_match = self._detect_section(first_cell)
+            if section_match:
+                # Сохраняем предыдущий раздел
+                if current_section and section_start != -1:
+                    sections.append((current_section, section_start, i - 1))
+
+                # Начинаем новый раздел
+                current_section = section_match
+                section_start = i
+                logger.info(f"🎯 Найден раздел: {current_section} в строке {i + 1}")
+
+        # Добавляем последний раздел
+        if current_section and section_start != -1:
+            sections.append((current_section, section_start, len(all_data) - 1))
+
+        return sections
+
+    def _detect_section(self, cell_content):
+        """Определяет, является ли ячейка началом раздела."""
+        lower_content = cell_content.lower()
+
+        if 'тир 1' in lower_content or '1 тир' in lower_content:
+            return 'tier1'
+        elif 'тир 2' in lower_content or '2 тир' in lower_content:
+            return 'tier2'
+        elif 'тир 3' in lower_content or '3 тир' in lower_content:
+            return 'tier3'
+        elif 'тир 4' in lower_content or '4 тир' in lower_content:
+            return 'tier4'
+        elif 'тир 5' in lower_content or '5 тир' in lower_content:
+            return 'tier5'
+        elif 'боссы бездны' in lower_content:
+            return 'abyss'
+
+        return None
+
+    def _get_tier_from_section_name(self, section_name):
+        """Получает название тира из имени раздела."""
+        if section_name in ['tier1', 'tier2', 'tier3', 'tier4', 'tier5']:
+            return section_name
+        elif section_name == 'abyss':
+            return 'abyss'
+        return None
 
     def extract_tier_from_boss_name(self, boss_name):
         """Извлекает тир из названия босса бездны по скобкам."""
@@ -154,17 +216,29 @@ class GoogleSheetsManager:
             'dark sindikat': 'DarkSyndicate',
             'mercia': 'Mercia',
             'xray': 'XRAY',
-            'hrykings': 'HryKings'
+            'hrykings': 'HryKings',
+            'hrkings': 'HryKings'
         }
 
         normalized = guild_name.strip()
         lower_name = normalized.lower()
 
+        # Сначала проверяем точные соответствия в маппинге
+        for key, value in guild_map.items():
+            if key == lower_name:
+                return value
+
+        # Затем проверяем частичные совпадения
         for key, value in guild_map.items():
             if key in lower_name:
                 return value
 
-        return normalized if normalized in ['Mercia', 'DarkSyndicate', 'HryKings', 'XRAY'] else None
+        # Если гильдия не найдена в маппинге, но соответствует ожидаемым названиям
+        if normalized in ['Mercia', 'DarkSyndicate', 'HryKings', 'XRAY']:
+            return normalized
+
+        logger.warning(f"⚠️ Неизвестное название гильдии: '{guild_name}' (нормализовано: '{normalized}')")
+        return None
 
     def clear_cache(self):
         """Очищает кэш для принудительного обновления данных."""

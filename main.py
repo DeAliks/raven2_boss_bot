@@ -95,15 +95,17 @@ def get_bosses_from_sheets(guild: str, schedule_key: str):
         return []
 
     today = datetime.now(pytz.timezone(TIMEZONE)).strftime('%d.%m')
-    normalized_guild = normalize_guild_name(guild)
 
-    logger.info(
-        f"🔍 Поиск боссов для гильдии '{guild}' (нормализовано: '{normalized_guild}') на дату '{schedule_key}' (сегодня: '{today}')")
-
+    # Проверяем, что запрашиваемая дата совпадает с сегодняшней
     if schedule_key != today:
-        logger.warning(f"Запрошенная дата {schedule_key} не совпадает с сегодняшней {today}")
+        logger.warning(f"⚠️ Запрошенная дата {schedule_key} не совпадает с сегодняшней {today}")
         return []
 
+    normalized_guild = normalize_guild_name(guild)
+
+    logger.info(f"🔍 Поиск боссов для гильдии '{guild}' (нормализовано: '{normalized_guild}') на дату '{schedule_key}'")
+
+    # Получаем все данные на сегодня
     bosses_data = sheets_manager.get_today_bosses()
     result = []
 
@@ -113,7 +115,6 @@ def get_bosses_from_sheets(guild: str, schedule_key: str):
         logger.info(f"🔍 Проверка {tier}: {len(tier_bosses)} боссов")
 
         for guild_name, boss_name in tier_bosses:
-            logger.info(f"🔍 Сравниваем: '{guild_name}' с '{normalized_guild}'")
             if guild_name == normalized_guild:
                 result.append((tier, boss_name))
                 logger.info(f"✅ Найден босс для {normalized_guild}: {boss_name} ({tier})")
@@ -290,6 +291,13 @@ async def handle_diagnostics(message: types.Message):
     text += f"• Google Sheets доступен: {'✅' if GOOGLE_SHEETS_AVAILABLE else '❌'}\n"
     text += f"• Подключение к таблице: {'✅' if sheets_manager.connected else '❌'}\n"
 
+    if GOOGLE_SHEETS_AVAILABLE and sheets_manager.connected:
+        try:
+            text += f"• Название таблицы: {sheets_manager.spreadsheet.title}\n"
+            text += f"• ID таблицы: {sheets_manager.spreadsheet.id}\n"
+        except:
+            text += "• Информация о таблице: недоступна\n"
+
     if guild:
         normalized_guild = normalize_guild_name(guild)
         text += f"• Ваша гильдия в базе: <b>{guild}</b>\n"
@@ -396,7 +404,7 @@ async def main():
 
     setup_scheduler(bot)
 
-    print("✅ Бот запущен и ожидает события...")
+    print("✅ Бot запущен и ожидает события...")
     await dp.start_polling(bot)
 
 
