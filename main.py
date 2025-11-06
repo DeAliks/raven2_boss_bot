@@ -362,6 +362,47 @@ async def cmd_test_rift(message: types.Message):
     await send_rift_notification(bot)
 
 
+# Добавьте эти команды в main.py для управления групповыми уведомлениями
+
+@dp.message(Command("group_info"))
+async def cmd_group_info(message: types.Message):
+    """Показывает информацию о настройках групповых уведомлений"""
+    from scheduler import GROUP_CHAT_ID, GROUP_TOPIC_ID, GROUP_GUILD
+
+    text = "📢 <b>Настройки групповых уведомлений</b>\n\n"
+    text += f"<b>Чат/канал:</b> {GROUP_CHAT_ID or 'Не настроен'}\n"
+    text += f"<b>ID темы:</b> {GROUP_TOPIC_ID or 'Не настроено'}\n"
+    text += f"<b>Гильдия:</b> {GROUP_GUILD or 'Не настроена'}\n\n"
+
+    if GROUP_CHAT_ID:
+        text += "✅ Групповые уведомления активны\n"
+        text += f"📝 Бот будет отправлять уведомления для гильдии <b>{GROUP_GUILD}</b>"
+    else:
+        text += "❌ Групповые уведомления не настроены"
+
+    await message.answer(text, parse_mode="HTML")
+
+
+@dp.message(Command("test_group_notification"))
+async def cmd_test_group_notification(message: types.Message):
+    """Тестовая команда для проверки групповых уведомлений"""
+    from scheduler import send_group_notification, send_rift_notification
+
+    try:
+        await message.answer("🔔 Тестируем групповые уведомления...")
+
+        # Тест уведомления о боссах
+        await send_group_notification(bot, "11:30", ["tier1", "tier2"], False, "03.11")
+        await asyncio.sleep(1)
+
+        # Тест уведомления о разломах
+        await send_rift_notification(bot)
+
+        await message.answer("✅ Тестовые уведомления отправлены в группу/канал")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
 # -------------------- Debug / Admin utilities --------------------
 @dp.message(Command("debug_guild"))
 async def cmd_debug_guild(message: types.Message):
