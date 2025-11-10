@@ -657,8 +657,7 @@ async def main():
     def run_discord_bot():
         """Запускает Discord бота в отдельном потоке"""
         try:
-            # Синхронизируем команды перед запуском
-            discord_bot.bot.run(DISCORD_TOKEN)
+            discord_bot.run()  # Просто вызываем метод run нашего экземпляра
         except Exception as e:
             logger.error(f"❌ Ошибка запуска Discord бота: {e}")
 
