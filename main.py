@@ -426,6 +426,122 @@ async def cmd_debug_guild(message: types.Message):
     await message.answer(text)
 
 
+# Добавьте эти команды в main.py
+
+# Добавьте эти команды в main.py
+
+@dp.message(Command("everyone"))
+async def cmd_everyone(message: types.Message):
+    """Отправляет сообщение всем пользователям бота"""
+    # Проверяем, что команда используется в личном чате или есть права
+    if message.chat.type not in ['private', 'group', 'supergroup']:
+        await message.answer("❌ Эта команда доступна только в личных чатах или группах")
+        return
+
+    # Получаем текст сообщения (всё после команды /everyone)
+    command_text = message.text
+    if not command_text or len(command_text.split()) < 2:
+        await message.answer("❌ Использование: /everyone <текст сообщения>")
+        return
+
+    # Извлекаем текст объявления
+    announcement_text = command_text.split(maxsplit=1)[1]
+
+    # Получаем всех пользователей из базы данных
+    users = get_all_users()
+
+    if not users:
+        await message.answer("❌ В базе данных нет пользователей")
+        return
+
+    # Отправляем сообщение всем пользователям
+    success_count = 0
+    fail_count = 0
+
+    announcement_message = (
+        f"📢 <b>ВАЖНОЕ ОБЪЯВЛЕНИЕ ОТ АЛЬЯНСА</b> 📢\n\n"
+        f"{announcement_text}\n\n"
+        f"<i>С уважением, команда альянса</i>"
+    )
+
+    for user_id, guild in users:
+        try:
+            await bot.send_message(
+                user_id,
+                announcement_message,
+                parse_mode="HTML"
+            )
+            success_count += 1
+            # Небольшая задержка чтобы не превысить лимиты Telegram
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
+            fail_count += 1
+
+    # Отправляем отчет
+    report_message = (
+        f"📊 <b>Отчет по рассылке:</b>\n\n"
+        f"✅ Успешно отправлено: {success_count} пользователям\n"
+        f"❌ Не удалось отправить: {fail_count} пользователям\n"
+        f"📝 Всего в базе: {len(users)} пользователей"
+    )
+
+    await message.answer(report_message, parse_mode="HTML")
+
+    # Также отправляем в группу/канал, если настроено
+    from scheduler import GROUP_CHAT_ID, GROUP_TOPIC_ID
+    if GROUP_CHAT_ID:
+        try:
+            group_announcement = (
+                f"📢 <b>ОБЪЯВЛЕНИЕ ДЛЯ ВСЕХ УЧАСТНИКОВ АЛЬЯНСА</b> 📢\n\n"
+                f"{announcement_text}\n\n"
+                f"<i>Сообщение также отправлено в личные сообщения {success_count} участникам бота</i>"
+            )
+
+            send_params = {
+                'chat_id': GROUP_CHAT_ID,
+                'text': group_announcement,
+                'parse_mode': 'HTML'
+            }
+
+            if GROUP_TOPIC_ID:
+                send_params['message_thread_id'] = GROUP_TOPIC_ID
+
+            await bot.send_message(**send_params)
+        except Exception as e:
+            logger.error(f"Не удалось отправить объявление в группу: {e}")
+
+
+@dp.message(Command("force_tier4_check"))
+async def cmd_force_tier4_check(message: types.Message):
+    """Принудительно проверяет и отправляет уведомления о боссах 4 тира"""
+    from scheduler import check_and_send_tier4_alliance_notification
+
+    try:
+        await message.answer("🔍 Принудительно проверяю боссов 4 тира...")
+
+        from datetime import datetime
+        import pytz
+        today = datetime.now(pytz.timezone(TIMEZONE)).strftime('%d.%m')
+
+        await check_and_send_tier4_alliance_notification(bot, today)
+
+        await message.answer("✅ Проверка завершена. Уведомления отправлены, если найдены боссы 4 тира.")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("reset_tier4_notifications"))
+async def cmd_reset_tier4_notifications(message: types.Message):
+    """Сбрасывает флаг отправки уведомлений о Tier 4 (для тестирования)"""
+    from scheduler import tier4_notification_sent_today
+
+    global tier4_notification_sent_today
+    tier4_notification_sent_today = False
+
+    await message.answer("✅ Флаг уведомлений о Tier 4 сброшен. Следующее уведомление отправится снова.")
+
 # -------------------- Запуск --------------------
 async def main():
     init_db()

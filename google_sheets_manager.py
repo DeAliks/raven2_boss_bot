@@ -5,6 +5,8 @@ from datetime import datetime
 import pytz
 import logging
 import re
+from config import SpreadSheet_URL
+
 
 # Настройки
 TIMEZONE = 'Europe/Moscow'
@@ -28,7 +30,7 @@ class GoogleSheetsManager:
             self.gc = gspread.service_account(filename=credentials_file)
 
             # URL вашей таблицы
-            spreadsheet_url = "https://docs.google.com/spreadsheets/d/1FkMJd5Oj1MFy4TQZm379PDT3wu0gAqaxdgUgvRr9e-c/edit?gid=275501199#gid=275501199"
+            spreadsheet_url = SpreadSheet_URL
             self.spreadsheet = self.gc.open_by_url(spreadsheet_url)
             self.connected = True
             logger.info("✅ Успешное подключение к Google Таблице")

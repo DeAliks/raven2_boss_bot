@@ -12,6 +12,12 @@ GROUP_CHAT_ID = "@dark_syndicated"  # Чат/канал для уведомле�
 GROUP_TOPIC_ID = 7  # ID темы (если есть)
 GROUP_GUILD = "DarkSyndicate"  # Гильдия для групповых уведомлений
 
+# Гильдии альянса
+ALLIANCE_GUILDS = ["Mercia", "DarkSyndicate", "HryKings", "XRAY"]
+
+# Переменная для хранения состояния отправки уведомлений о Tier 4
+tier4_notification_sent_today = False
+
 
 def get_schedule_key_for_date(dt: datetime) -> str:
     return dt.strftime("%d.%m")
@@ -22,9 +28,19 @@ async def send_notification(bot: Bot, time_key: str):
     Отправляет уведомления за 10 минут до появления боссов
     time_key: '03:30', '07:30', '11:30', '15:30', '19:30', '23:30'
     """
+    global tier4_notification_sent_today
+
     tz = pytz.timezone(TIMEZONE)
     now = datetime.now(tz)
     schedule_key = get_schedule_key_for_date(now)
+
+    # Сбрасываем флаг уведомления о Tier 4 в новый день
+    current_date = now.date()
+    if not hasattr(send_notification, 'last_check_date'):
+        send_notification.last_check_date = current_date
+    elif send_notification.last_check_date != current_date:
+        send_notification.last_check_date = current_date
+        tier4_notification_sent_today = False
 
     # Определяем какие тиры появляются в это время
     tiers_info = {
@@ -42,6 +58,11 @@ async def send_notification(bot: Bot, time_key: str):
     target_tiers = tiers_info[time_key]['tiers']
     is_free_farm = tiers_info[time_key]['free_farm']
 
+    # Проверяем боссов 4 тира для альянса при КАЖДОМ уведомлении (кроме FREE FARM)
+    if not is_free_farm and not tier4_notification_sent_today:
+        await check_and_send_tier4_alliance_notification(bot, schedule_key)
+        tier4_notification_sent_today = True
+
     # Отправляем уведомления в группу/канал
     if GROUP_CHAT_ID:
         await send_group_notification(bot, time_key, target_tiers, is_free_farm, schedule_key)
@@ -53,6 +74,60 @@ async def send_notification(bot: Bot, time_key: str):
             await send_free_farm_notification(bot, user_id, time_key, target_tiers)
         else:
             await send_guild_notification(bot, user_id, guild, time_key, target_tiers, schedule_key)
+
+
+async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str):
+    """Проверяет и отправляет уведомления о боссах 4 тира для альянса"""
+    try:
+        # Получаем данные из Google Таблицы
+        bosses_data = sheets_manager.get_today_bosses()
+        tier4_bosses = bosses_data.get('tier4', [])
+
+        # Ищем боссов 4 тира для гильдий альянса
+        alliance_tier4_bosses = []
+        for guild, boss in tier4_bosses:
+            if guild in ALLIANCE_GUILDS and boss.strip():
+                alliance_tier4_bosses.append((guild, boss))
+
+        # Если нашли боссов 4 тира, отправляем уведомление
+        if alliance_tier4_bosses:
+            # Создаем общее сообщение для всех боссов
+            boss_list = "\n".join([f"• {boss} (гильдия {guild})" for guild, boss in alliance_tier4_bosses])
+
+            message = (
+                f"🔔 <b>ВНИМАНИЕ АЛЬЯНС!</b> 🔔\n\n"
+                f"Обратите внимание! Сегодня есть боссы <b>Тира 4</b>:\n\n"
+                f"{boss_list}\n\n"
+                f"⚔️ Не пропустите возможность помочь нашим гильдиям! ⚔️"
+            )
+
+            # Отправляем в группу/канал
+            if GROUP_CHAT_ID:
+                send_params = {
+                    'chat_id': GROUP_CHAT_ID,
+                    'text': message,
+                    'parse_mode': 'HTML'
+                }
+
+                if GROUP_TOPIC_ID:
+                    send_params['message_thread_id'] = GROUP_TOPIC_ID
+
+                await bot.send_message(**send_params)
+
+            # Также отправляем всем пользователям бота
+            users = get_all_users()
+            for user_id, user_guild in users:
+                try:
+                    await bot.send_message(user_id, message, parse_mode="HTML")
+                except Exception as e:
+                    print(f"Не удалось отправить уведомление о боссе 4 тира пользователю {user_id}: {e}")
+
+            print(f"✅ Отправлено уведомление о {len(alliance_tier4_bosses)} боссах 4 тира")
+        else:
+            print("ℹ️ Боссы 4 тира для альянса не найдены")
+
+    except Exception as e:
+        print(f"Ошибка при отправке уведомлений о боссах 4 тира: {e}")
 
 
 async def send_group_notification(bot: Bot, time_key: str, target_tiers: list, is_free_farm: bool, schedule_key: str):
