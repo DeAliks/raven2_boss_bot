@@ -22,8 +22,8 @@ class DiscordBot:
         intents = discord.Intents.default()
         intents.message_content = True
 
-        # Убираем префикс, так как используем только slash-команды
-        self.bot = commands.Bot(command_prefix='!', intents=intents)  # Измените префикс на что-то другое, например '!'
+        # Используем префикс '!' для текстовых команд
+        self.bot = commands.Bot(command_prefix='!', intents=intents)
         self.channel = None
         self.loop = asyncio.get_event_loop()
         self.setup_handlers()
@@ -32,15 +32,6 @@ class DiscordBot:
         @self.bot.event
         async def on_ready():
             logger.info(f'✅ Discord бот вошел как {self.bot.user}')
-
-            # Синхронизируем команды с серверами
-            try:
-                synced = await self.bot.tree.sync()
-                logger.info(f"✅ Синхронизировано {len(synced)} slash-команд")
-                for cmd in synced:
-                    logger.info(f"  - {cmd.name}")
-            except Exception as e:
-                logger.error(f"❌ Ошибка синхронизации команд: {e}")
 
             # Находим нужный канал
             for guild in self.bot.guilds:
@@ -62,22 +53,22 @@ class DiscordBot:
         async def on_error(event, *args, **kwargs):
             logger.error(f'Ошибка в Discord боте: {event}')
 
-        # Добавляем команду random как slash-команду
-        @self.bot.tree.command(name="random", description="Случайный выбор из списка или диапазона чисел")
-        async def random(interaction: discord.Interaction, input_data: str):
-            """Обрабатывает команду /random для случайного выбора"""
+        # Добавляем команду random как текстовую команду
+        @self.bot.command(name="random")
+        async def random(ctx, *, input_data: str):
+            """Обрабатывает команду !random для случайного выбора"""
             try:
                 result = self.process_random_input(input_data)
                 if result:
-                    await interaction.response.send_message(f"🎲 Случайный выбор: **{result}**")
+                    await ctx.send(f"🎲 Случайный выбор: **{result}**")
                 else:
-                    await interaction.response.send_message("❌ Неверный формат. Используйте:\n"
-                                                            "• Список ников (каждый с новой строки)\n"
-                                                            "• Диапазон чисел (например: 1-10)\n"
-                                                            "• Одно число (например: 7)")
+                    await ctx.send("❌ Неверный формат. Используйте:\n"
+                                  "• `!random 1-10` - диапазон чисел\n"
+                                  "• `!random 7` - число от 1 до 7\n"
+                                  "• `!random Ника\nЛеся\nЛось` - список ников (каждый с новой строки)")
             except Exception as e:
                 logger.error(f"❌ Ошибка в команде random: {e}")
-                await interaction.response.send_message("❌ Произошла ошибка при обработке команды")
+                await ctx.send("❌ Произошла ошибка при обработке команды")
 
     def process_random_input(self, input_data: str) -> str:
         """Обрабатывает входные данные для команды random"""
