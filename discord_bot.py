@@ -18,9 +18,12 @@ DISCORD_CHANNEL_NAME = "👻︱боссы"  # Название канала дл
 
 class DiscordBot:
     def __init__(self):
+        # Настройка правильных интентов
         intents = discord.Intents.default()
         intents.message_content = True
-        self.bot = commands.Bot(command_prefix='/', intents=intents)
+
+        # Убираем префикс, так как используем только slash-команды
+        self.bot = commands.Bot(command_prefix='!', intents=intents)  # Измените префикс на что-то другое, например '!'
         self.channel = None
         self.loop = asyncio.get_event_loop()
         self.setup_handlers()
@@ -29,6 +32,16 @@ class DiscordBot:
         @self.bot.event
         async def on_ready():
             logger.info(f'✅ Discord бот вошел как {self.bot.user}')
+
+            # Синхронизируем команды с серверами
+            try:
+                synced = await self.bot.tree.sync()
+                logger.info(f"✅ Синхронизировано {len(synced)} slash-команд")
+                for cmd in synced:
+                    logger.info(f"  - {cmd.name}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка синхронизации команд: {e}")
+
             # Находим нужный канал
             for guild in self.bot.guilds:
                 for channel in guild.channels:
@@ -49,7 +62,7 @@ class DiscordBot:
         async def on_error(event, *args, **kwargs):
             logger.error(f'Ошибка в Discord боте: {event}')
 
-        # Добавляем команду random
+        # Добавляем команду random как slash-команду
         @self.bot.tree.command(name="random", description="Случайный выбор из списка или диапазона чисел")
         async def random(interaction: discord.Interaction, input_data: str):
             """Обрабатывает команду /random для случайного выбора"""
