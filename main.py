@@ -400,6 +400,117 @@ async def cmd_test_group_notification(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
+
+@dp.message(Command("test_discord_bosses"))
+async def cmd_test_discord_bosses(message: types.Message):
+    """Тестовая команда для отправки уведомления о боссах в Discord"""
+    try:
+        await message.answer("🔄 Отправляю тестовое уведомление о боссах в Discord...")
+
+        # Используем asyncio для запуска корутины в правильном event loop
+        success = await discord_bot.send_test_boss_notification()
+
+        if success:
+            await message.answer("✅ Тестовое уведомление о боссах отправлено в Discord!")
+        else:
+            await message.answer("❌ Не удалось отправить тестовое уведомление в Discord")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("test_discord_rift"))
+async def cmd_test_discord_rift(message: types.Message):
+    """Тестовая команда для отправки уведомления о разломах в Discord"""
+    try:
+        await message.answer("🔄 Отправляю тестовое уведомление о разломах в Discord...")
+
+        success = await discord_bot.send_test_rift_notification()
+
+        if success:
+            await message.answer("✅ Тестовое уведомление о разломах отправлено в Discord!")
+        else:
+            await message.answer("❌ Не удалось отправить тестовое уведомление в Discord")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("test_discord_tier4"))
+async def cmd_test_discord_tier4(message: types.Message):
+    """Тестовая команда для отправки уведомления о боссах 4 тира в Discord"""
+    try:
+        await message.answer("🔄 Отправляю тестовое уведомление о боссах 4 тира в Discord...")
+
+        success = await discord_bot.send_test_tier4_notification()
+
+        if success:
+            await message.answer("✅ Тестовое уведомление о боссах 4 тира отправлено в Discord!")
+        else:
+            await message.answer("❌ Не удалось отправить тестовое уведомление в Discord")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("test_discord_all"))
+async def cmd_test_discord_all(message: types.Message):
+    """Тестовая команда для отправки всех уведомлений в Discord"""
+    try:
+        await message.answer("🔄 Отправляю все тестовые уведомления в Discord...")
+
+        results = []
+
+        # Тест уведомления о боссах
+        await asyncio.sleep(1)
+        boss_success = await discord_bot.send_test_boss_notification()
+        results.append(f"Боссы: {'✅' if boss_success else '❌'}")
+
+        # Тест уведомления о разломах
+        await asyncio.sleep(1)
+        rift_success = await discord_bot.send_test_rift_notification()
+        results.append(f"Разломы: {'✅' if rift_success else '❌'}")
+
+        # Тест уведомления о Tier 4
+        await asyncio.sleep(1)
+        tier4_success = await discord_bot.send_test_tier4_notification()
+        results.append(f"Tier 4: {'✅' if tier4_success else '❌'}")
+
+        report = "📊 **Отчет по тестированию Discord:**\n\n" + "\n".join(results)
+        await message.answer(report)
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("discord_status"))
+async def cmd_discord_status(message: types.Message):
+    """Показывает статус Discord бота"""
+    try:
+        status_info = "🤖 **Статус Discord бота:**\n\n"
+
+        if discord_bot.bot.is_ready():
+            status_info += "✅ **Бот подключен и готов**\n"
+
+            if discord_bot.channel:
+                status_info += f"✅ **Канал найден:** {discord_bot.channel.name}\n"
+            else:
+                status_info += "❌ **Канал не найден**\n"
+
+            status_info += f"👥 **Серверы:** {len(discord_bot.bot.guilds)}\n"
+
+            # Информация о серверах
+            for guild in discord_bot.bot.guilds:
+                status_info += f"  • {guild.name} (участников: {guild.member_count})\n"
+
+        else:
+            status_info += "❌ **Бот не подключен**\n"
+
+        await message.answer(status_info)
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
 # -------------------- Debug / Admin utilities --------------------
 @dp.message(Command("debug_guild"))
 async def cmd_debug_guild(message: types.Message):
@@ -541,13 +652,13 @@ async def main():
 
     print("✅ База данных инициализирована")
 
-    # Запускаем Discord бота в отдельном потоке
-    def run_discord_bot():
-        discord_bot.run()
+    # Запускаем Discord бота в отдельной задаче
+    async def run_discord_bot():
+        await discord_bot.bot.start(DISCORD_TOKEN)
 
-    discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
-    discord_thread.start()
-    print("✅ Discord бот запущен в отдельном потоке")
+    # Запускаем Discord бота в фоне
+    discord_task = asyncio.create_task(run_discord_bot())
+    print("✅ Discord бот запущен в фоновом режиме")
 
     # Проверяем подключение к Google Таблице
     if GOOGLE_SHEETS_AVAILABLE and sheets_manager.connected:
@@ -563,6 +674,13 @@ async def main():
     setup_scheduler(bot)
 
     print("✅ Бот запущен и ожидает события...")
+    print("\n📋 Доступные команды для Discord:")
+    print("  /test_discord_bosses - тест уведомления о боссах")
+    print("  /test_discord_rift - тест уведомления о разломах")
+    print("  /test_discord_tier4 - тест уведомления о Tier 4")
+    print("  /test_discord_all - тест всех уведомлений")
+    print("  /discord_status - статус Discord бота")
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

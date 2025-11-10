@@ -20,6 +20,7 @@ class DiscordBot:
     def __init__(self):
         self.bot = discord.Client(intents=discord.Intents.default())
         self.channel = None
+        self.loop = asyncio.get_event_loop()  # Сохраняем event loop
         self.setup_handlers()
 
     def setup_handlers(self):
@@ -167,6 +168,46 @@ class DiscordBot:
         except Exception as e:
             logger.error(f"❌ Ошибка отправки уведомления о Tier 4 в Discord: {e}")
 
+    async def send_test_boss_notification(self):
+        """Отправляет тестовое уведомление о боссах в Discord"""
+        try:
+            # Получаем текущие данные
+            tz = pytz.timezone(TIMEZONE)
+            now = datetime.now(tz)
+            schedule_key = now.strftime('%d.%m')
+
+            # Используем ближайшее время для теста
+            time_key = "15:30"
+            target_tiers = ['tier1', 'tier2']
+            is_free_farm = False
+
+            await self.send_boss_notification(time_key, target_tiers, is_free_farm, schedule_key)
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки тестового уведомления о боссах: {e}")
+            return False
+
+    async def send_test_rift_notification(self):
+        """Отправляет тестовое уведомление о разломах в Discord"""
+        try:
+            await self.send_rift_notification()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки тестового уведомления о разломах: {e}")
+            return False
+
+    async def send_test_tier4_notification(self):
+        """Отправляет тестовое уведомление о боссах 4 тира в Discord"""
+        try:
+            # Тестовые данные для боссов 4 тира
+            test_bosses = [("Mercia", "Двуликий Моргон"), ("DarkSyndicate", "Марионетка Нидрок")]
+            await self.send_tier4_notification(test_bosses)
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки тестового уведомления о Tier 4: {e}")
+            return False
+
     @tasks.loop(minutes=1)
     async def check_bosses(self):
         """Проверяет время и отправляет уведомления"""
@@ -217,4 +258,6 @@ class DiscordBot:
         except Exception as e:
             logger.error(f"❌ Ошибка запуска Discord бота: {e}")
 
+
+# Создаем глобальный экземпляр бота
 discord_bot = DiscordBot()
