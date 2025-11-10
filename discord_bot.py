@@ -1,9 +1,10 @@
 # discord_bot.py
 import discord
-from discord.ext import tasks
+from discord.ext import tasks, commands
 import asyncio
 from datetime import datetime
 import pytz
+import random
 from config import DISCORD_TOKEN, TIMEZONE, GROUP_GUILD, DISCORD_ROLE_ID
 from google_sheets_manager import sheets_manager
 import logging
@@ -17,7 +18,9 @@ DISCORD_CHANNEL_NAME = "👻︱боссы"  # Название канала дл
 
 class DiscordBot:
     def __init__(self):
-        self.bot = discord.Client(intents=discord.Intents.default())
+        intents = discord.Intents.default()
+        intents.message_content = True
+        self.bot = commands.Bot(command_prefix='/', intents=intents)
         self.channel = None
         self.loop = asyncio.get_event_loop()
         self.setup_handlers()
@@ -45,6 +48,55 @@ class DiscordBot:
         @self.bot.event
         async def on_error(event, *args, **kwargs):
             logger.error(f'Ошибка в Discord боте: {event}')
+
+        # Добавляем команду random
+        @self.bot.tree.command(name="random", description="Случайный выбор из списка или диапазона чисел")
+        async def random(interaction: discord.Interaction, input_data: str):
+            """Обрабатывает команду /random для случайного выбора"""
+            try:
+                result = self.process_random_input(input_data)
+                if result:
+                    await interaction.response.send_message(f"🎲 Случайный выбор: **{result}**")
+                else:
+                    await interaction.response.send_message("❌ Неверный формат. Используйте:\n"
+                                                            "• Список ников (каждый с новой строки)\n"
+                                                            "• Диапазон чисел (например: 1-10)\n"
+                                                            "• Одно число (например: 7)")
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде random: {e}")
+                await interaction.response.send_message("❌ Произошла ошибка при обработке команды")
+
+    def process_random_input(self, input_data: str) -> str:
+        """Обрабатывает входные данные для команды random"""
+        input_data = input_data.strip()
+
+        # Проверяем, является ли ввод диапазоном чисел (например: "1-10")
+        if '-' in input_data:
+            parts = input_data.split('-')
+            if len(parts) == 2:
+                try:
+                    start = int(parts[0].strip())
+                    end = int(parts[1].strip())
+                    if start <= end:
+                        return str(random.randint(start, end))
+                    else:
+                        return str(random.randint(end, start))
+                except ValueError:
+                    pass  # Не числа, значит не диапазон
+
+        # Проверяем, является ли ввод одним числом (например: "7")
+        try:
+            num = int(input_data)
+            return str(random.randint(1, num))
+        except ValueError:
+            pass
+
+        # Если не числа, то обрабатываем как список ников
+        lines = [line.strip() for line in input_data.split('\n') if line.strip()]
+        if len(lines) >= 2:
+            return random.choice(lines)
+
+        return None
 
     def get_role_mention(self):
         """Возвращает правильное упоминание роли"""
