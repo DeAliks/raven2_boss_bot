@@ -5,6 +5,7 @@ import pytz
 import logging
 import threading
 from discord_bot import discord_bot
+from config import DISCORD_TOKEN
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
