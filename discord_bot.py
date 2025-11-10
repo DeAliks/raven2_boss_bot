@@ -25,54 +25,106 @@ class DiscordBot:
         # Используем префикс '!' для текстовых команд
         self.bot = commands.Bot(command_prefix='!', intents=intents)
         self.channel = None
-        self.loop = asyncio.get_event_loop()
         self.setup_handlers()
 
     def setup_handlers(self):
         @self.bot.event
         async def on_ready():
             logger.info(f'✅ Discord бот вошел как {self.bot.user}')
+            logger.info(f'✅ ID бота: {self.bot.user.id}')
 
             # Находим нужный канал
             for guild in self.bot.guilds:
+                logger.info(f'🔍 Поиск канала в гильдии: {guild.name}')
                 for channel in guild.channels:
                     if channel.name == DISCORD_CHANNEL_NAME and isinstance(channel, discord.TextChannel):
                         self.channel = channel
-                        logger.info(f'✅ Найден канал для уведомлений: {channel.name}')
+                        logger.info(f'✅ Найден канал для уведомлений: {channel.name} (ID: {channel.id})')
                         break
                 if self.channel:
                     break
 
             if not self.channel:
                 logger.error(f'❌ Канал "{DISCORD_CHANNEL_NAME}" не найден!')
+                # Покажем доступные каналы для отладки
+                for guild in self.bot.guilds:
+                    logger.info(f'📋 Доступные каналы в {guild.name}:')
+                    for channel in guild.channels:
+                        if isinstance(channel, discord.TextChannel):
+                            logger.info(f'  - {channel.name} (ID: {channel.id})')
+
+            # Выводим список зарегистрированных команд
+            logger.info('📋 Зарегистрированные команды:')
+            for command in self.bot.commands:
+                logger.info(f'  - !{command.name}')
 
             # Запускаем фоновые задачи
             self.check_bosses.start()
 
         @self.bot.event
-        async def on_error(event, *args, **kwargs):
-            logger.error(f'Ошибка в Discord боте: {event}')
+        async def on_command_error(ctx, error):
+            if isinstance(error, commands.CommandNotFound):
+                await ctx.send(f"❌ Команда не найдена. Используйте `!help` для списка команд.")
+            else:
+                logger.error(f'Ошибка в команде: {error}')
+                await ctx.send("❌ Произошла ошибка при выполнении команды.")
 
         # Добавляем команду random как текстовую команду
         @self.bot.command(name="random")
-        async def random(ctx, *, input_data: str):
+        async def random_command(ctx, *, input_data: str):
             """Обрабатывает команду !random для случайного выбора"""
             try:
+                logger.info(f"🎲 Получена команда random: {input_data}")
                 result = self.process_random_input(input_data)
                 if result:
-                    await ctx.send(f"🎲 Случайный выбор: **{result}**")
+                    response = f"🎲 Случайный выбор: **{result}**"
+                    await ctx.send(response)
+                    logger.info(f"✅ Отправлен ответ: {result}")
                 else:
-                    await ctx.send("❌ Неверный формат. Используйте:\n"
-                                  "• `!random 1-10` - диапазон чисел\n"
-                                  "• `!random 7` - число от 1 до 7\n"
-                                  "• `!random Ника\nЛеся\nЛось` - список ников (каждый с новой строки)")
+                    response = (
+                        "❌ Неверный формат. Используйте:\n"
+                        "• `!random 1-10` - диапазон чисел\n"
+                        "• `!random 7` - число от 1 до 7\n"
+                        "• Многострочный ввод для списка ников:\n"
+                        "```\n"
+                        "!random Ника\n"
+                        "Леся\n"
+                        "Лось\n"
+                        "```"
+                    )
+                    await ctx.send(response)
             except Exception as e:
                 logger.error(f"❌ Ошибка в команде random: {e}")
                 await ctx.send("❌ Произошла ошибка при обработке команды")
 
+        # Добавляем команду help
+        @self.bot.command(name="help")
+        async def help_command(ctx):
+            """Показывает справку по командам"""
+            help_text = """
+**📋 Доступные команды:**
+
+`!random <данные>` - случайный выбор
+  • `!random 1-10` - случайное число от 1 до 10
+  • `!random 7` - случайное число от 1 до 7
+  • `!random` с многострочным вводом для списка:
+    ```
+    !random Ника
+    Леся
+    Лось
+    ```
+
+`!help` - показывает эту справку
+
+**🤖 Автоматические уведомления:**
+Бот автоматически отправляет уведомления о боссах и разломах за 10 минут до их появления.
+            """
+            await ctx.send(help_text)
+
     def process_random_input(self, input_data: str) -> str:
         """Обрабатывает входные данные для команды random"""
         input_data = input_data.strip()
+        logger.info(f"🔧 Обработка входных данных: '{input_data}'")
 
         # Проверяем, является ли ввод диапазоном чисел (например: "1-10")
         if '-' in input_data:
@@ -82,24 +134,35 @@ class DiscordBot:
                     start = int(parts[0].strip())
                     end = int(parts[1].strip())
                     if start <= end:
-                        return str(random.randint(start, end))
+                        result = str(random.randint(start, end))
+                        logger.info(f"🔢 Диапазон {start}-{end} -> {result}")
+                        return result
                     else:
-                        return str(random.randint(end, start))
+                        result = str(random.randint(end, start))
+                        logger.info(f"🔢 Диапазон {end}-{start} -> {result}")
+                        return result
                 except ValueError:
+                    logger.info("❌ Неверный формат диапазона")
                     pass  # Не числа, значит не диапазон
 
         # Проверяем, является ли ввод одним числом (например: "7")
         try:
             num = int(input_data)
-            return str(random.randint(1, num))
+            result = str(random.randint(1, num))
+            logger.info(f"🔢 Число от 1 до {num} -> {result}")
+            return result
         except ValueError:
-            pass
+            logger.info("❌ Не число, проверяем как список")
 
         # Если не числа, то обрабатываем как список ников
         lines = [line.strip() for line in input_data.split('\n') if line.strip()]
+        logger.info(f"📝 Найдено строк: {len(lines)}")
         if len(lines) >= 2:
-            return random.choice(lines)
+            result = random.choice(lines)
+            logger.info(f"📝 Выбран ник: {result}")
+            return result
 
+        logger.info("❌ Не удалось обработать входные данные")
         return None
 
     def get_role_mention(self):
