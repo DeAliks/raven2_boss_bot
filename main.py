@@ -653,13 +653,19 @@ async def main():
 
     print("✅ База данных инициализирована")
 
-    # Запускаем Discord бота в отдельной задаче
-    async def run_discord_bot():
-        await discord_bot.bot.start(DISCORD_TOKEN)
+    # Запускаем Discord бота в отдельном потоке, чтобы не блокировать asyncio
+    def run_discord_bot():
+        """Запускает Discord бота в отдельном потоке"""
+        try:
+            # Синхронизируем команды перед запуском
+            discord_bot.bot.run(DISCORD_TOKEN)
+        except Exception as e:
+            logger.error(f"❌ Ошибка запуска Discord бота: {e}")
 
-    # Запускаем Discord бота в фоне
-    discord_task = asyncio.create_task(run_discord_bot())
-    print("✅ Discord бот запущен в фоновом режиме")
+    # Запускаем Discord бота в отдельном потоке
+    discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
+    discord_thread.start()
+    print("✅ Discord бот запущен в отдельном потоке")
 
     # Проверяем подключение к Google Таблице
     if GOOGLE_SHEETS_AVAILABLE and sheets_manager.connected:
@@ -676,6 +682,7 @@ async def main():
 
     print("✅ Бот запущен и ожидает события...")
     print("\n📋 Доступные команды для Discord:")
+    print("  /random - случайный выбор из списка или диапазона чисел")
     print("  /test_discord_bosses - тест уведомления о боссах")
     print("  /test_discord_rift - тест уведомления о разломах")
     print("  /test_discord_tier4 - тест уведомления о Tier 4")
