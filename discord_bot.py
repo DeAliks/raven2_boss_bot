@@ -4,7 +4,7 @@ from discord.ext import tasks
 import asyncio
 from datetime import datetime
 import pytz
-from config import DISCORD_TOKEN, TIMEZONE, GROUP_GUILD
+from config import DISCORD_TOKEN, TIMEZONE, GROUP_GUILD, DISCORD_ROLE_ID
 from google_sheets_manager import sheets_manager
 import logging
 
@@ -13,14 +13,13 @@ logger = logging.getLogger(__name__)
 
 # Настройки Discord
 DISCORD_CHANNEL_NAME = "👻︱боссы"  # Название канала для уведомлений
-DISCORD_ROLE_MENTION = "@Raven2"  # Роль для упоминания
 
 
 class DiscordBot:
     def __init__(self):
         self.bot = discord.Client(intents=discord.Intents.default())
         self.channel = None
-        self.loop = asyncio.get_event_loop()  # Сохраняем event loop
+        self.loop = asyncio.get_event_loop()
         self.setup_handlers()
 
     def setup_handlers(self):
@@ -46,6 +45,14 @@ class DiscordBot:
         @self.bot.event
         async def on_error(event, *args, **kwargs):
             logger.error(f'Ошибка в Discord боте: {event}')
+
+    def get_role_mention(self):
+        """Возвращает правильное упоминание роли"""
+        if DISCORD_ROLE_ID:
+            return f"<@&{DISCORD_ROLE_ID}>"
+        else:
+            logger.warning("❌ DISCORD_ROLE_ID не настроен, упоминания роли не будут работать")
+            return "@Raven2"
 
     async def send_boss_notification(self, time_key: str, target_tiers: list, is_free_farm: bool, schedule_key: str):
         """Отправляет уведомление о боссах в Discord"""
@@ -117,8 +124,10 @@ class DiscordBot:
 
                 message += "💀 **Удачи в бою!**"
 
-            # Отправляем сообщение с упоминанием роли
-            full_message = f"{DISCORD_ROLE_MENTION}\n{message}"
+            # Отправляем сообщение с правильным упоминанием роли
+            role_mention = self.get_role_mention()
+            full_message = f"{role_mention}\n{message}"
+
             await self.channel.send(full_message)
             logger.info(f"✅ Уведомление отправлено в Discord: {time_key}")
 
@@ -138,7 +147,9 @@ class DiscordBot:
                 "💎 Не пропустите возможность получить ценные награды!"
             )
 
-            full_message = f"{DISCORD_ROLE_MENTION}\n{message}"
+            role_mention = self.get_role_mention()
+            full_message = f"{role_mention}\n{message}"
+
             await self.channel.send(full_message)
             logger.info("✅ Уведомление о разломах отправлено в Discord")
 
@@ -161,7 +172,9 @@ class DiscordBot:
                     f"⚔️ **Не пропустите возможность помочь нашим гильдиям!** ⚔️"
                 )
 
-                full_message = f"{DISCORD_ROLE_MENTION}\n{message}"
+                role_mention = self.get_role_mention()
+                full_message = f"{role_mention}\n{message}"
+
                 await self.channel.send(full_message)
                 logger.info(f"✅ Уведомление о {len(alliance_bosses)} боссах 4 тира отправлено в Discord")
 
