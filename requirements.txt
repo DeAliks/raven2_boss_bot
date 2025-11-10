@@ -3,3 +3,5 @@ apscheduler==3.10.4
 pytz
 gspread
 cachetools
+discord.py
+asyncio

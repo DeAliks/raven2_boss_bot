@@ -3,6 +3,8 @@ import asyncio
 from datetime import datetime
 import pytz
 import logging
+import threading
+from discord_bot import discord_bot
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,7 +19,6 @@ except Exception as e:
     GOOGLE_SHEETS_AVAILABLE = False
 
 
-    # Создаем заглушку
     class DummySheetsManager:
         def get_today_bosses(self):
             return {'tier1': [], 'tier2': [], 'tier3': [], 'tier4': [], 'tier5': []}
@@ -157,7 +158,6 @@ def format_bosses_grouped_rows(rows):
                 text += f"• {n}\n"
             text += "\n"
     return text
-
 
 async def send_text_chunks(message_obj, text: str, parse_mode: str = None):
     chunk_size = 3800
@@ -361,9 +361,6 @@ async def cmd_test_rift(message: types.Message):
     await message.answer("🌀 Тестовое уведомление о разломах:")
     await send_rift_notification(bot)
 
-
-# Добавьте эти команды в main.py для управления групповыми уведомлениями
-
 @dp.message(Command("group_info"))
 async def cmd_group_info(message: types.Message):
     """Показывает информацию о настройках групповых уведомлений"""
@@ -425,10 +422,6 @@ async def cmd_debug_guild(message: types.Message):
 
     await message.answer(text)
 
-
-# Добавьте эти команды в main.py
-
-# Добавьте эти команды в main.py
 
 @dp.message(Command("everyone"))
 async def cmd_everyone(message: types.Message):
@@ -548,6 +541,14 @@ async def main():
 
     print("✅ База данных инициализирована")
 
+    # Запускаем Discord бота в отдельном потоке
+    def run_discord_bot():
+        discord_bot.run()
+
+    discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
+    discord_thread.start()
+    print("✅ Discord бот запущен в отдельном потоке")
+
     # Проверяем подключение к Google Таблице
     if GOOGLE_SHEETS_AVAILABLE and sheets_manager.connected:
         try:
@@ -561,9 +562,8 @@ async def main():
 
     setup_scheduler(bot)
 
-    print("✅ Бot запущен и ожидает события...")
+    print("✅ Бот запущен и ожидает события...")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -6,6 +6,7 @@ import pytz
 from config import TIMEZONE
 from db import get_all_users
 from google_sheets_manager import sheets_manager
+from discord_bot import discord_bot
 
 # Настройки для групповых уведомлений
 GROUP_CHAT_ID = "@dark_syndicated"  # Чат/канал для уведомлений
@@ -63,17 +64,36 @@ async def send_notification(bot: Bot, time_key: str):
         await check_and_send_tier4_alliance_notification(bot, schedule_key)
         tier4_notification_sent_today = True
 
-    # Отправляем уведомления в группу/канал
+    # Отправляем уведомления в Discord
+    await send_discord_boss_notification(time_key, target_tiers, is_free_farm, schedule_key)
+
+    # Отправляем уведомления в группу/канал Telegram
     if GROUP_CHAT_ID:
         await send_group_notification(bot, time_key, target_tiers, is_free_farm, schedule_key)
 
-    # Отправляем уведомления пользователям в личку
+    # Отправляем уведомления пользователям в личку Telegram
     users = get_all_users()
     for user_id, guild in users:
         if is_free_farm:
             await send_free_farm_notification(bot, user_id, time_key, target_tiers)
         else:
             await send_guild_notification(bot, user_id, guild, time_key, target_tiers, schedule_key)
+
+
+async def send_discord_boss_notification(time_key: str, target_tiers: list, is_free_farm: bool, schedule_key: str):
+    """Отправляет уведомление о боссах в Discord"""
+    try:
+        await discord_bot.send_boss_notification(time_key, target_tiers, is_free_farm, schedule_key)
+    except Exception as e:
+        print(f"❌ Ошибка отправки уведомления в Discord: {e}")
+
+
+async def send_discord_rift_notification():
+    """Отправляет уведомление о разломах в Discord"""
+    try:
+        await discord_bot.send_rift_notification()
+    except Exception as e:
+        print(f"❌ Ошибка отправки уведомления о разломах в Discord: {e}")
 
 
 async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str):
@@ -91,6 +111,9 @@ async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str
 
         # Если нашли боссов 4 тира, отправляем уведомление
         if alliance_tier4_bosses:
+            # Отправляем в Discord
+            await discord_bot.send_tier4_notification(alliance_tier4_bosses)
+
             # Создаем общее сообщение для всех боссов
             boss_list = "\n".join([f"• {boss} (гильдия {guild})" for guild, boss in alliance_tier4_bosses])
 
@@ -101,7 +124,7 @@ async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str
                 f"⚔️ Не пропустите возможность помочь нашим гильдиям! ⚔️"
             )
 
-            # Отправляем в группу/канал
+            # Отправляем в группу/канал Telegram
             if GROUP_CHAT_ID:
                 send_params = {
                     'chat_id': GROUP_CHAT_ID,
@@ -131,7 +154,7 @@ async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str
 
 
 async def send_group_notification(bot: Bot, time_key: str, target_tiers: list, is_free_farm: bool, schedule_key: str):
-    """Отправляет уведомление в группу/канал"""
+    """Отправляет уведомление в группу/канал Telegram"""
     try:
         if is_free_farm:
             message = f"🎯 FREE FARM через 10 минут ({time_key})!\n\n"
@@ -293,7 +316,10 @@ async def send_guild_notification(bot: Bot, user_id: int, guild: str, time_key: 
 
 async def send_rift_notification(bot: Bot):
     """Отправляет уведомление о разломах за 10 минут до появления"""
-    # Отправляем в группу/канал
+    # Отправляем в Discord
+    await send_discord_rift_notification()
+
+    # Отправляем в группу/канал Telegram
     if GROUP_CHAT_ID:
         try:
             message = "🌀 <b>РАЗЛОМЫ СКОРО ПОЯВЯТСЯ!</b>\n\n"
@@ -315,7 +341,7 @@ async def send_rift_notification(bot: Bot):
         except Exception as e:
             print(f"Не удалось отправить сообщение о разломах в группу/канал: {e}")
 
-    # Отправляем пользователям
+    # Отправляем пользователям Telegram
     users = get_all_users()
     message = "🌀 <b>РАЗЛОМЫ СКОРО ПОЯВЯТСЯ!</b>\n\n"
     message += "⏰ Через 10 минут откроются разломы\n"
