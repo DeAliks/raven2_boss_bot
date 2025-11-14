@@ -376,8 +376,39 @@ class DiscordBot:
             if current_time in rift_times:
                 await self.send_rift_notification()
 
+            # Проверяем боссов 4 тира в 19:20
+            if current_time == '19:20':
+                await self.check_and_send_tier4_notification()
+
         except Exception as e:
             logger.error(f"❌ Ошибка в check_bosses: {e}")
+
+    async def check_and_send_tier4_notification(self):
+        """Проверяет и отправляет уведомление о боссах 4 тира"""
+        try:
+            # Получаем данные о боссах на сегодня
+            bosses_data = sheets_manager.get_today_bosses()
+
+            # Получаем боссов 4 тира
+            tier4_bosses = bosses_data.get('tier4', [])
+
+            if tier4_bosses:
+                # Фильтруем только боссов нашего альянса (Mercia, DarkSyndicate, HryKings)
+                alliance_bosses = []
+                for guild, boss in tier4_bosses:
+                    if guild in ['Mercia', 'DarkSyndicate', 'HryKings']:
+                        alliance_bosses.append((guild, boss))
+
+                if alliance_bosses:
+                    await self.send_tier4_notification(alliance_bosses)
+                    logger.info(f"✅ Уведомление о Tier 4 отправлено в 19:20. Найдено {len(alliance_bosses)} боссов")
+                else:
+                    logger.info("ℹ️ Боссы 4 тира найдены, но не для нашего альянса")
+            else:
+                logger.info("ℹ️ Боссы 4 тира не найдены на сегодня")
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при проверке боссов 4 тира: {e}")
 
     @check_bosses.before_loop
     async def before_check_bosses(self):
