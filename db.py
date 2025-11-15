@@ -1,160 +1,251 @@
 # db.py
 import sqlite3
-from typing import List, Tuple, Optional
+import logging
+from datetime import datetime
 
-DB_PATH = "raven2.db"
+logger = logging.getLogger(__name__)
 
-def get_conn():
-    return sqlite3.connect(DB_PATH)
+DB_PATH = 'boss_bot.db'
 
-# -------------------- ИНИЦИАЛИЗАЦИЯ --------------------
+
 def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
+    """Инициализирует базу данных"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
 
-    # таблица пользователей
-    cur.execute("""
+    # Таблица пользователей
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            guild TEXT
+            user_id TEXT PRIMARY KEY,
+            username TEXT,
+            guild TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_banned BOOLEAN DEFAULT FALSE,
+            ban_reason TEXT,
+            banned_at TIMESTAMP,
+            banned_by TEXT
         )
-    """)
+    ''')
 
-    # таблица записей боссов (с сохранением позиции/порядка)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS bosses_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            guild TEXT NOT NULL,
-            tier TEXT NOT NULL,
-            schedule_key TEXT NOT NULL,
-            position INTEGER NOT NULL,
-            UNIQUE(name, guild, tier, schedule_key)
+    # Таблица забаненных гильдий
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS banned_guilds (
+            guild_name TEXT PRIMARY KEY,
+            banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            banned_by TEXT,
+            ban_reason TEXT
         )
-    """)
+    ''')
+
+    conn.commit()
+    conn.close()
+    logger.info("✅ База данных инициализирована")
+
+
+def add_or_update_user(user_id: str, username: str = None, guild: str = None):
+    """Добавляет или обновляет пользователя"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    if username is None:
+        cursor.execute('''
+            INSERT OR REPLACE INTO users (user_id, guild, created_at)
+            VALUES (?, ?, ?)
+        ''', (user_id, guild, datetime.now()))
+    else:
+        cursor.execute('''
+            INSERT OR REPLACE INTO users (user_id, username, guild, created_at)
+            VALUES (?, ?, ?, ?)
+        ''', (user_id, username, guild, datetime.now()))
 
     conn.commit()
     conn.close()
 
-# -------------------- Пользователи --------------------
-def set_guild(user_id: int, guild: str):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("REPLACE INTO users (user_id, guild) VALUES (?, ?)", (user_id, guild))
-    conn.commit()
+
+def get_user(user_id: str):
+    """Получает информацию о пользователе"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT user_id, username, guild, created_at, is_banned, ban_reason, banned_at, banned_by
+        FROM users WHERE user_id = ?
+    ''', (user_id,))
+
+    result = cursor.fetchone()
     conn.close()
 
-def get_guild(user_id: int) -> Optional[str]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT guild FROM users WHERE user_id = ?", (user_id,))
-    row = cur.fetchone()
+    if result:
+        return {
+            'user_id': result[0],
+            'username': result[1],
+            'guild': result[2],
+            'created_at': result[3],
+            'is_banned': bool(result[4]),
+            'ban_reason': result[5],
+            'banned_at': result[6],
+            'banned_by': result[7]
+        }
+    return None
+
+
+def get_all_users():
+    """Получает всех пользователей"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT user_id, username, guild, created_at, is_banned, ban_reason
+        FROM users ORDER BY created_at DESC
+    ''')
+
+    users = []
+    for row in cursor.fetchall():
+        users.append({
+            'user_id': row[0],
+            'username': row[1],
+            'guild': row[2],
+            'created_at': row[3],
+            'is_banned': bool(row[4]),
+            'ban_reason': row[5]
+        })
+
     conn.close()
-    return row[0] if row else None
+    return users
 
-def get_all_users() -> List[Tuple[int, str]]:
-    """
-    Возвращает список всех подписанных пользователей: [(user_id, guild), ...]
-    Используется в scheduler для рассылки уведомлений.
-    """
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT user_id, guild FROM users")
-    rows = cur.fetchall()
-    conn.close()
-    return rows
 
-# -------------------- СИНХРОНИЗАЦИЯ И УПРАВЛЕНИЕ boss_records --------------------
-def clear_boss_records():
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM bosses_records")
-    conn.commit()
-    conn.close()
+def ban_user(user_id: str, ban_reason: str, banned_by: str):
+    """Банит пользователя"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
 
-def sync_bosses_from_schedule(bosses_schedule: dict):
-    """
-    Перезаписывает таблицу bosses_records из словаря BOSSES_SCHEDULE.
-    Формат bosses_schedule:
-      { "25.10": { "Mercia": {"tier1":[...], "tier2":[...], "tier3":[...]}, ...}, ... }
-    Сохраняем порядок (position) для каждой гильдии в каждом слоте.
-    """
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM bosses_records")
-    conn.commit()
-
-    # Проходим по ключам в порядке словаря (важно чтобы порядок в BOSSES_SCHEDULE был корректным)
-    for schedule_key in bosses_schedule.keys():
-        guilds = bosses_schedule[schedule_key]
-        for guild, tiers in guilds.items():
-            pos = 0
-            # Сохраняем порядок: tier1, tier2, tier3 (сортировка ключей гарантирует порядок)
-            for tier_name in sorted(tiers.keys()):
-                names = tiers[tier_name]
-                for name in names:
-                    pos += 1
-                    try:
-                        cur.execute(
-                            "INSERT OR IGNORE INTO bosses_records (name, guild, tier, schedule_key, position) VALUES (?, ?, ?, ?, ?)",
-                            (name, guild, tier_name, schedule_key, pos)
-                        )
-                    except Exception:
-                        # пропускаем ошибку конкретной записи, чтобы не ломать всю синхронизацию
-                        pass
+    cursor.execute('''
+        UPDATE users 
+        SET is_banned = TRUE, ban_reason = ?, banned_at = ?, banned_by = ?
+        WHERE user_id = ?
+    ''', (ban_reason, datetime.now(), banned_by, user_id))
 
     conn.commit()
     conn.close()
+    logger.info(f"✅ Пользователь {user_id} забанен. Причина: {ban_reason}")
 
-# -------------------- ЗАПРОСЫ (чтение боссов) --------------------
-def get_bosses_for_guild_and_slot(guild: str, schedule_key: str) -> List[Tuple[str, str]]:
-    """
-    Возвращает список (tier, name) отсортированных по position для указанной гильдии и слота (schedule_key).
-    """
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT tier, name FROM bosses_records
-        WHERE guild = ? AND schedule_key = ?
-        ORDER BY position ASC
-    """, (guild, schedule_key))
-    rows = cur.fetchall()
-    conn.close()
-    return rows  # [(tier, name), ...]
 
-def get_all_bosses_for_guild(guild: str) -> List[Tuple[str, int]]:
-    """
-    Возвращает уникальные боссы для гильдии с сортировкой по первой позиции появления в расписании.
-    Результат: [(name, first_position), ...]
-    """
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT name, MIN(position) as first_pos
-        FROM bosses_records
-        WHERE guild = ?
-        GROUP BY name
-        ORDER BY first_pos ASC
-    """, (guild,))
-    rows = cur.fetchall()
-    conn.close()
-    return rows  # [(name, first_pos), ...]
+def unban_user(user_id: str):
+    """Разбанивает пользователя"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
 
-def get_all_schedule_keys() -> List[str]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT DISTINCT schedule_key FROM bosses_records ORDER BY schedule_key")
-    rows = [r[0] for r in cur.fetchall()]
-    conn.close()
-    return rows
+    cursor.execute('''
+        UPDATE users 
+        SET is_banned = FALSE, ban_reason = NULL, banned_at = NULL, banned_by = NULL
+        WHERE user_id = ?
+    ''', (user_id,))
 
-# -------------------- Утилиты (для отладки) --------------------
-def print_stats():
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM users")
-    users_count = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM bosses_records")
-    bosses_count = cur.fetchone()[0]
+    conn.commit()
     conn.close()
-    print(f"DB stats: users={users_count}, boss_records={bosses_count}")
+    logger.info(f"✅ Пользователь {user_id} разбанен")
+
+
+def ban_guild(guild_name: str, ban_reason: str, banned_by: str):
+    """Банит гильдию"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT OR REPLACE INTO banned_guilds (guild_name, banned_by, ban_reason)
+        VALUES (?, ?, ?)
+    ''', (guild_name, banned_by, ban_reason))
+
+    conn.commit()
+    conn.close()
+    logger.info(f"✅ Гильдия {guild_name} забанена. Причина: {ban_reason}")
+
+
+def unban_guild(guild_name: str):
+    """Разбанивает гильдию"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('DELETE FROM banned_guilds WHERE guild_name = ?', (guild_name,))
+
+    conn.commit()
+    conn.close()
+    logger.info(f"✅ Гильдия {guild_name} разбанена")
+
+
+def get_banned_guilds():
+    """Получает список забаненных гильдий"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT guild_name, banned_by, ban_reason, banned_at FROM banned_guilds')
+
+    guilds = []
+    for row in cursor.fetchall():
+        guilds.append({
+            'guild_name': row[0],
+            'banned_by': row[1],
+            'ban_reason': row[2],
+            'banned_at': row[3]
+        })
+
+    conn.close()
+    return guilds
+
+
+def is_guild_banned(guild_name: str):
+    """Проверяет, забанена ли гильдия"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT 1 FROM banned_guilds WHERE guild_name = ?', (guild_name,))
+    result = cursor.fetchone() is not None
+
+    conn.close()
+    return result
+
+
+def set_guild(user_id: str, guild: str):
+    """Устанавливает гильдию для пользователя"""
+    add_or_update_user(user_id, guild=guild)
+
+
+def get_guild(user_id: str):
+    """Получает гильдию пользователя"""
+    user = get_user(user_id)
+    return user['guild'] if user else None
+
+
+def get_user_stats():
+    """Получает статистику пользователей"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Общее количество пользователей
+    cursor.execute('SELECT COUNT(*) FROM users')
+    total_users = cursor.fetchone()[0]
+
+    # Забаненные пользователи
+    cursor.execute('SELECT COUNT(*) FROM users WHERE is_banned = TRUE')
+    banned_users = cursor.fetchone()[0]
+
+    # Активные пользователи
+    active_users = total_users - banned_users
+
+    # Распределение по гильдиям
+    cursor.execute('''
+        SELECT guild, COUNT(*) as count 
+        FROM users 
+        WHERE is_banned = FALSE AND guild IS NOT NULL
+        GROUP BY guild
+    ''')
+    guild_distribution = {row[0]: row[1] for row in cursor.fetchall()}
+
+    conn.close()
+
+    return {
+        'total_users': total_users,
+        'active_users': active_users,
+        'banned_users': banned_users,
+        'guild_distribution': guild_distribution
+    }
