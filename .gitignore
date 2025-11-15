@@ -1,0 +1,91 @@
+# Конфиденциальные файлы конфигурации
+config.py
+credentials.json
+*.json
+
+# Файлы базы данных
+*.db
+*.sqlite3
+*.sqlite
+
+# Питоновские кэш-файлы
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Файлы окружения
+.env
+.venv
+.env.local
+.env.production
+
+# Логи
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Операционные системы
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Распределенные файлы
+*.dist
+*.local
+
+# Пакеты
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# Установщики
+*.msi
+*.msm
+*.msp
+
+# Образы дисков
+*.dmg
+*.iso
+
+# Резервные копии
+*.bak
+*.backup
+
+# Временные файлы
+*.tmp
+*.temp
+
+# Файлы сессий
+*.session
+
+# Файлы специфичные для проекта
+/google_sheets_manager/__pycache__/
+/db/__pycache__/
+/discord_bot/__pycache__/
+/scheduler/__pycache__/
