@@ -63,11 +63,37 @@ class DiscordBot:
         @self.bot.event
         async def on_command_error(ctx, error):
             if isinstance(error, commands.CommandNotFound):
-                await ctx.send(f"❌ Команда не найдена. Используйте `!help` для списка команд.")
+                # Игнорируем ошибку "команда не найдена"
+                return
+            elif isinstance(error, commands.CheckFailure):
+                await ctx.send("❌ У вас нет прав для выполнения этой команды.")
             else:
                 logger.error(f'Ошибка в команде: {error}')
                 await ctx.send("❌ Произошла ошибка при выполнении команды.")
 
+        def is_admin():
+            """Проверка прав администратора"""
+
+            async def predicate(ctx):
+                # Проверяем по ID пользователя
+                if ctx.author.id == ADMIN_USER_ID:
+                    return True
+
+                # Проверяем по роли администратора
+                if ctx.guild and ctx.author.guild_permissions.administrator:
+                    return True
+
+                # Проверяем по наличию роли с названием "Admin"
+                if ctx.guild:
+                    admin_role = discord.utils.get(ctx.author.roles, name="Admin")
+                    if admin_role:
+                        return True
+
+                return False
+
+            return commands.check(predicate)
+
+        # Глобальная проверка перед выполнением любой команды
         @self.bot.check
         async def global_check(ctx):
             """Глобальная проверка перед выполнением любой команды"""
@@ -122,7 +148,7 @@ class DiscordBot:
 
         # Команды администратора
         @self.bot.command(name="ban")
-        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        @is_admin()
         async def ban_user_cmd(ctx, user_id: str, *, reason: str = "Не указана"):
             """Банит пользователя по ID"""
             try:
@@ -144,7 +170,7 @@ class DiscordBot:
                 await ctx.send("❌ Произошла ошибка при бане пользователя")
 
         @self.bot.command(name="unban")
-        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        @is_admin()
         async def unban_user_cmd(ctx, user_id: str):
             """Разбанивает пользователя по ID"""
             try:
@@ -165,7 +191,7 @@ class DiscordBot:
                 await ctx.send("❌ Произошла ошибка при разбане пользователя")
 
         @self.bot.command(name="banguild")
-        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        @is_admin()
         async def ban_guild_cmd(ctx, guild_name: str, *, reason: str = "Не указана"):
             """Банит гильдию"""
             try:
@@ -181,7 +207,7 @@ class DiscordBot:
                 await ctx.send("❌ Произошла ошибка при бане гильдии")
 
         @self.bot.command(name="unbanguild")
-        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        @is_admin()
         async def unban_guild_cmd(ctx, guild_name: str):
             """Разбанивает гильдию"""
             try:
@@ -197,7 +223,7 @@ class DiscordBot:
                 await ctx.send("❌ Произошла ошибка при разбане гильдии")
 
         @self.bot.command(name="userinfo")
-        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        @is_admin()
         async def user_info_cmd(ctx, user_id: str = None):
             """Показывает информацию о пользователе"""
             try:
@@ -227,7 +253,7 @@ class DiscordBot:
                 await ctx.send("❌ Произошла ошибка при получении информации о пользователе")
 
         @self.bot.command(name="userstats")
-        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        @is_admin()
         async def user_stats_cmd(ctx):
             """Показывает статистику пользователей"""
             try:
@@ -259,7 +285,7 @@ class DiscordBot:
                 await ctx.send("❌ Произошла ошибка при получении статистики")
 
         @self.bot.command(name="userlist")
-        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        @is_admin()
         async def user_list_cmd(ctx, page: int = 1):
             """Показывает список пользователей"""
             try:
@@ -293,6 +319,12 @@ class DiscordBot:
             except Exception as e:
                 logger.error(f"❌ Ошибка при получении списка пользователей: {e}")
                 await ctx.send("❌ Произошла ошибка при получении списка пользователей")
+
+        @self.bot.command(name="admincheck")
+        @is_admin()
+        async def admin_check_cmd(ctx):
+            """Проверка прав администратора"""
+            await ctx.send("✅ У вас есть права администратора!")
 
         # Добавляем команду help
         @self.bot.command(name="help")
@@ -363,7 +395,6 @@ class DiscordBot:
         return None
 
     # ... остальные методы (get_role_mention, send_boss_notification, и т.д.) остаются без изменений ...
-    # Копируем их из предыдущей версии
 
     def get_role_mention(self):
         """Возвращает правильное упоминание роли"""
@@ -443,7 +474,7 @@ class DiscordBot:
 
                 message += "💀 **Удачи в бою!**"
 
-            # Отправляем сообщение с правильным упоминанием роли
+            # Отправляем сообщение с правильным упоминание роли
             role_mention = self.get_role_mention()
             full_message = f"{role_mention}\n{message}"
 
@@ -621,6 +652,6 @@ class DiscordBot:
         except Exception as e:
             logger.error(f"❌ Ошибка запуска Discord бота: {e}")
 
-#Бан
+
 # Создаем глобальный экземпляр бота
 discord_bot = DiscordBot()
