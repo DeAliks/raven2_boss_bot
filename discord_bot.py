@@ -8,6 +8,7 @@ import random
 from config import DISCORD_TOKEN, TIMEZONE, GROUP_GUILD, DISCORD_ROLE_ID
 from google_sheets_manager import sheets_manager
 import logging
+import db
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
@@ -15,12 +16,16 @@ logger = logging.getLogger(__name__)
 # Настройки Discord
 DISCORD_CHANNEL_NAME = "👻︱боссы"  # Название канала для уведомлений
 
+# ID администратора (ваш ID)
+ADMIN_USER_ID = 7774897924
+
 
 class DiscordBot:
     def __init__(self):
         # Настройка правильных интентов
         intents = discord.Intents.default()
         intents.message_content = True
+        intents.members = True
 
         # Используем префикс '!' для текстовых команд
         self.bot = commands.Bot(command_prefix='!', intents=intents)
@@ -46,12 +51,6 @@ class DiscordBot:
 
             if not self.channel:
                 logger.error(f'❌ Канал "{DISCORD_CHANNEL_NAME}" не найден!')
-                # Покажем доступные каналы для отладки
-                for guild in self.bot.guilds:
-                    logger.info(f'📋 Доступные каналы в {guild.name}:')
-                    for channel in guild.channels:
-                        if isinstance(channel, discord.TextChannel):
-                            logger.info(f'  - {channel.name} (ID: {channel.id})')
 
             # Выводим список зарегистрированных команд
             logger.info('📋 Зарегистрированные команды:')
@@ -69,12 +68,36 @@ class DiscordBot:
                 logger.error(f'Ошибка в команде: {error}')
                 await ctx.send("❌ Произошла ошибка при выполнении команды.")
 
+        @self.bot.check
+        async def global_check(ctx):
+            """Глобальная проверка перед выполнением любой команды"""
+            # Сохраняем информацию о пользователе
+            user_id = str(ctx.author.id)
+            username = f"{ctx.author.name}#{ctx.author.discriminator}"
+
+            # Добавляем/обновляем пользователя в базе
+            db.add_or_update_user(user_id, username)
+
+            # Проверяем бан пользователя
+            user_info = db.get_user(user_id)
+            if user_info and user_info['is_banned']:
+                await ctx.send(f"❌ Вы забанены. Причина: {user_info['ban_reason']}")
+                return False
+
+            # Проверяем бан гильдии (если пользователь выбрал гильдию)
+            user_guild = user_info['guild'] if user_info else None
+            if user_guild and db.is_guild_banned(user_guild):
+                await ctx.send(f"❌ Ваша гильдия '{user_guild}' забанена.")
+                return False
+
+            return True
+
         # Добавляем команду random как текстовую команду
         @self.bot.command(name="random")
         async def random_command(ctx, *, input_data: str):
             """Обрабатывает команду !random для случайного выбора"""
             try:
-                logger.info(f"🎲 Получена команда random: {input_data}")
+                logger.info(f"🎲 Получена команда random от {ctx.author.id}: {input_data}")
                 result = self.process_random_input(input_data)
                 if result:
                     response = f"🎲 Случайный выбор: **{result}**"
@@ -96,6 +119,180 @@ class DiscordBot:
             except Exception as e:
                 logger.error(f"❌ Ошибка в команде random: {e}")
                 await ctx.send("❌ Произошла ошибка при обработке команды")
+
+        # Команды администратора
+        @self.bot.command(name="ban")
+        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        async def ban_user_cmd(ctx, user_id: str, *, reason: str = "Не указана"):
+            """Банит пользователя по ID"""
+            try:
+                # Проверяем, существует ли пользователь
+                user_info = db.get_user(user_id)
+                if not user_info:
+                    await ctx.send(f"❌ Пользователь с ID {user_id} не найден в базе данных.")
+                    return
+
+                if user_info['is_banned']:
+                    await ctx.send(f"❌ Пользователь {user_id} уже забанен.")
+                    return
+
+                db.ban_user(user_id, reason, f"Discord: {ctx.author.id}")
+                await ctx.send(f"✅ Пользователь {user_id} забанен. Причина: {reason}")
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка при бане пользователя: {e}")
+                await ctx.send("❌ Произошла ошибка при бане пользователя")
+
+        @self.bot.command(name="unban")
+        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        async def unban_user_cmd(ctx, user_id: str):
+            """Разбанивает пользователя по ID"""
+            try:
+                user_info = db.get_user(user_id)
+                if not user_info:
+                    await ctx.send(f"❌ Пользователь с ID {user_id} не найден в базе данных.")
+                    return
+
+                if not user_info['is_banned']:
+                    await ctx.send(f"❌ Пользователь {user_id} не забанен.")
+                    return
+
+                db.unban_user(user_id)
+                await ctx.send(f"✅ Пользователь {user_id} разбанен.")
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка при разбане пользователя: {e}")
+                await ctx.send("❌ Произошла ошибка при разбане пользователя")
+
+        @self.bot.command(name="banguild")
+        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        async def ban_guild_cmd(ctx, guild_name: str, *, reason: str = "Не указана"):
+            """Банит гильдию"""
+            try:
+                if db.is_guild_banned(guild_name):
+                    await ctx.send(f"❌ Гильдия '{guild_name}' уже забанена.")
+                    return
+
+                db.ban_guild(guild_name, reason, f"Discord: {ctx.author.id}")
+                await ctx.send(f"✅ Гильдия '{guild_name}' забанена. Причина: {reason}")
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка при бане гильдии: {e}")
+                await ctx.send("❌ Произошла ошибка при бане гильдии")
+
+        @self.bot.command(name="unbanguild")
+        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        async def unban_guild_cmd(ctx, guild_name: str):
+            """Разбанивает гильдию"""
+            try:
+                if not db.is_guild_banned(guild_name):
+                    await ctx.send(f"❌ Гильдия '{guild_name}' не забанена.")
+                    return
+
+                db.unban_guild(guild_name)
+                await ctx.send(f"✅ Гильдия '{guild_name}' разбанена.")
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка при разбане гильдии: {e}")
+                await ctx.send("❌ Произошла ошибка при разбане гильдии")
+
+        @self.bot.command(name="userinfo")
+        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        async def user_info_cmd(ctx, user_id: str = None):
+            """Показывает информацию о пользователе"""
+            try:
+                if user_id is None:
+                    user_id = str(ctx.author.id)
+
+                user_info = db.get_user(user_id)
+                if not user_info:
+                    await ctx.send(f"❌ Пользователь с ID {user_id} не найден.")
+                    return
+
+                embed = discord.Embed(title=f"Информация о пользователе {user_id}", color=0x00ff00)
+                embed.add_field(name="👤 Имя", value=user_info['username'] or "Не указано", inline=True)
+                embed.add_field(name="🏷 Гильдия", value=user_info['guild'] or "Не выбрана", inline=True)
+                embed.add_field(name="📅 Дата регистрации", value=user_info['created_at'], inline=True)
+                embed.add_field(name="🚫 Забанен", value="✅ Да" if user_info['is_banned'] else "❌ Нет", inline=True)
+
+                if user_info['is_banned']:
+                    embed.add_field(name="📝 Причина бана", value=user_info['ban_reason'] or "Не указана", inline=True)
+                    embed.add_field(name="⏰ Дата бана", value=user_info['banned_at'] or "Неизвестно", inline=True)
+                    embed.add_field(name="🛡 Забанен кем", value=user_info['banned_by'] or "Неизвестно", inline=True)
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка при получении информации о пользователе: {e}")
+                await ctx.send("❌ Произошла ошибка при получении информации о пользователе")
+
+        @self.bot.command(name="userstats")
+        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        async def user_stats_cmd(ctx):
+            """Показывает статистику пользователей"""
+            try:
+                stats = db.get_user_stats()
+                banned_guilds = db.get_banned_guilds()
+
+                embed = discord.Embed(title="📊 Статистика пользователей", color=0x0099ff)
+
+                embed.add_field(name="👥 Всего пользователей", value=stats['total_users'], inline=True)
+                embed.add_field(name="✅ Активных", value=stats['active_users'], inline=True)
+                embed.add_field(name="🚫 Забаненных", value=stats['banned_users'], inline=True)
+
+                # Распределение по гильдиям
+                guild_distribution = "\n".join(
+                    [f"• {guild}: {count}" for guild, count in stats['guild_distribution'].items()])
+                if guild_distribution:
+                    embed.add_field(name="🏷 Распределение по гильдиям", value=guild_distribution, inline=False)
+
+                # Забаненные гильдии
+                if banned_guilds:
+                    banned_guilds_text = "\n".join(
+                        [f"• {guild['guild_name']}: {guild['ban_reason']}" for guild in banned_guilds])
+                    embed.add_field(name="🚫 Забаненные гильдии", value=banned_guilds_text, inline=False)
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка при получении статистики: {e}")
+                await ctx.send("❌ Произошла ошибка при получении статистики")
+
+        @self.bot.command(name="userlist")
+        @commands.check(lambda ctx: ctx.author.id == ADMIN_USER_ID)
+        async def user_list_cmd(ctx, page: int = 1):
+            """Показывает список пользователей"""
+            try:
+                users = db.get_all_users()
+                if not users:
+                    await ctx.send("❌ В базе данных нет пользователей.")
+                    return
+
+                # Пагинация
+                items_per_page = 10
+                total_pages = (len(users) + items_per_page - 1) // items_per_page
+                page = max(1, min(page, total_pages))
+
+                start_idx = (page - 1) * items_per_page
+                end_idx = start_idx + items_per_page
+                page_users = users[start_idx:end_idx]
+
+                embed = discord.Embed(title=f"📋 Список пользователей (стр. {page}/{total_pages})", color=0xff9900)
+
+                for user in page_users:
+                    status = "🚫" if user['is_banned'] else "✅"
+                    guild = user['guild'] or "Не выбрана"
+                    embed.add_field(
+                        name=f"{status} {user['user_id']}",
+                        value=f"👤 {user['username']}\n🏷 {guild}\n📅 {user['created_at']}",
+                        inline=False
+                    )
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка при получении списка пользователей: {e}")
+                await ctx.send("❌ Произошла ошибка при получении списка пользователей")
 
         # Добавляем команду help
         @self.bot.command(name="help")
@@ -164,6 +361,9 @@ class DiscordBot:
 
         logger.info("❌ Не удалось обработать входные данные")
         return None
+
+    # ... остальные методы (get_role_mention, send_boss_notification, и т.д.) остаются без изменений ...
+    # Копируем их из предыдущей версии
 
     def get_role_mention(self):
         """Возвращает правильное упоминание роли"""
@@ -421,6 +621,6 @@ class DiscordBot:
         except Exception as e:
             logger.error(f"❌ Ошибка запуска Discord бота: {e}")
 
-
+#Бан
 # Создаем глобальный экземпляр бота
 discord_bot = DiscordBot()
