@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 import pytz
 import random
-from config import DISCORD_TOKEN, TIMEZONE, GROUP_GUILD, DISCORD_ROLE_ID
+from config import DISCORD_BOT_TOKEN, TIMEZONE, GROUP_GUILD, DISCORD_ROLE_ID
 from google_sheets_manager import sheets_manager
 import logging
 import db
@@ -27,8 +27,8 @@ class DiscordBot:
         intents.message_content = True
         intents.members = True
 
-        # Используем префикс '!' для текстовых команд
-        self.bot = commands.Bot(command_prefix='!', intents=intents)
+        # Используем префикс '!' для текстовых команд и отключаем встроенную команду help
+        self.bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
         self.channel = None
         self.setup_handlers()
 
@@ -326,9 +326,9 @@ class DiscordBot:
             """Проверка прав администратора"""
             await ctx.send("✅ У вас есть права администратора!")
 
-        # Добавляем команду help
-        @self.bot.command(name="help")
-        async def help_command(ctx):
+        # Добавляем команду справки с другим именем
+        @self.bot.command(name="commands")
+        async def commands_help(ctx):
             """Показывает справку по командам"""
             help_text = """
 **📋 Доступные команды:**
@@ -343,7 +343,7 @@ class DiscordBot:
     Лось
     ```
 
-`!help` - показывает эту справку
+`!commands` - показывает эту справку
 
 **🤖 Автоматические уведомления:**
 Бот автоматически отправляет уведомления о боссах и разломах за 10 минут до их появления.
@@ -394,7 +394,7 @@ class DiscordBot:
         logger.info("❌ Не удалось обработать входные данные")
         return None
 
-    # ... остальные методы (get_role_mention, send_boss_notification, и т.д.) остаются без изменений ...
+    # ... остальные методы остаются без изменений ...
 
     def get_role_mention(self):
         """Возвращает правильное упоминание роли"""
@@ -474,7 +474,7 @@ class DiscordBot:
 
                 message += "💀 **Удачи в бою!**"
 
-            # Отправляем сообщение с правильным упоминание роли
+            # Отправляем сообщение с правильным упоминанием роли
             role_mention = self.get_role_mention()
             full_message = f"{role_mention}\n{message}"
 
@@ -648,7 +648,7 @@ class DiscordBot:
     def run(self):
         """Запускает Discord бота"""
         try:
-            self.bot.run(DISCORD_TOKEN)
+            self.bot.run(DISCORD_BOT_TOKEN)
         except Exception as e:
             logger.error(f"❌ Ошибка запуска Discord бота: {e}")
 
