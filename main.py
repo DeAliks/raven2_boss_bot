@@ -5,7 +5,7 @@ import pytz
 import logging
 import threading
 from discord_bot import discord_bot
-from config import DISCORD_TOKEN
+from config import DISCORD_BOT_TOKEN
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -569,13 +569,31 @@ async def cmd_everyone(message: types.Message):
         f"<i>С уважением, команда альянса</i>"
     )
 
-    for user_id, guild in users:
+    # Проверяем, есть ли изображение в сообщении
+    has_photo = message.photo is not None
+    photo_file_id = None
+    if has_photo:
+        # Берем самое большое фото
+        photo_file_id = message.photo[-1].file_id
+
+    for user in users:
+        user_id = user['user_id']  # Теперь user - это словарь
         try:
-            await bot.send_message(
-                user_id,
-                announcement_message,
-                parse_mode="HTML"
-            )
+            if has_photo and photo_file_id:
+                # Отправляем фото с текстом
+                await bot.send_photo(
+                    user_id,
+                    photo=photo_file_id,
+                    caption=announcement_message,
+                    parse_mode="HTML"
+                )
+            else:
+                # Отправляем только текст
+                await bot.send_message(
+                    user_id,
+                    announcement_message,
+                    parse_mode="HTML"
+                )
             success_count += 1
             # Небольшая задержка чтобы не превысить лимиты Telegram
             await asyncio.sleep(0.1)
@@ -590,6 +608,49 @@ async def cmd_everyone(message: types.Message):
         f"❌ Не удалось отправить: {fail_count} пользователям\n"
         f"📝 Всего в базе: {len(users)} пользователей"
     )
+
+    if has_photo:
+        report_message += f"\n🖼 С фото: Да"
+    else:
+        report_message += f"\n🖼 С фото: Нет"
+
+    await message.answer(report_message, parse_mode="HTML")
+
+    # Также отправляем в группу/канал, если настроено
+    from scheduler import GROUP_CHAT_ID, GROUP_TOPIC_ID
+    if GROUP_CHAT_ID:
+        try:
+            group_announcement = (
+                f"📢 <b>ОБЪЯВЛЕНИЕ ДЛЯ ВСЕХ УЧАСТНИКОВ АЛЬЯНСА</b> 📢\n\n"
+                f"{announcement_text}\n\n"
+                f"<i>Сообщение также отправлено в личные сообщения {success_count} участникам бота</i>"
+            )
+
+            if has_photo and photo_file_id:
+                # Отправляем фото в группу
+                send_params = {
+                    'chat_id': GROUP_CHAT_ID,
+                    'photo': photo_file_id,
+                    'caption': group_announcement,
+                    'parse_mode': 'HTML'
+                }
+                if GROUP_TOPIC_ID:
+                    send_params['message_thread_id'] = GROUP_TOPIC_ID
+
+                await bot.send_photo(**send_params)
+            else:
+                # Отправляем текст в группу
+                send_params = {
+                    'chat_id': GROUP_CHAT_ID,
+                    'text': group_announcement,
+                    'parse_mode': 'HTML'
+                }
+                if GROUP_TOPIC_ID:
+                    send_params['message_thread_id'] = GROUP_TOPIC_ID
+
+                await bot.send_message(**send_params)
+        except Exception as e:
+            logger.error(f"Не удалось отправить объявление в группу: {e}")
 
     await message.answer(report_message, parse_mode="HTML")
 
@@ -681,11 +742,24 @@ async def main():
 
     print("✅ Бот запущен и ожидает события...")
     print("\n📋 Доступные команды для Discord:")
-    print("  /random - случайный выбор из списка или диапазона чисел")
-    print("  /test_discord_bosses - тест уведомления о боссах")
-    print("  /test_discord_rift - тест уведомления о разломах")
-    print("  /test_discord_tier4 - тест уведомления о Tier 4")
-    print("  /test_discord_all - тест всех уведомлений")
+    print("  !random - случайный выбор из списка или диапазона чисел")
+    print("  !commands - справка по командам")
+    print("  !admincheck - проверка прав администратора")
+    print("  !userinfo - информация о пользователе")
+    print("  !userstats - статистика пользователей")
+    print("  !userlist - список пользователей")
+    print("  !ban - забанить пользователя")
+    print("  !unban - разбанить пользователя")
+    print("  !banguild - забанить гильдию")
+    print("  !unbanguild - разбанить гильдию")
+
+    print("\n📋 Доступные команды для Telegram:")
+    print("  /start - начать работу")
+    print("  /everyone - рассылка всем пользователям")
+    print("  /test_discord_bosses - тест уведомления Discord о боссах")
+    print("  /test_discord_rift - тест уведомления Discord о разломах")
+    print("  /test_discord_tier4 - тест уведомления Discord о Tier 4")
+    print("  /test_discord_all - тест всех уведомлений Discord")
     print("  /discord_status - статус Discord бота")
 
     await dp.start_polling(bot)
