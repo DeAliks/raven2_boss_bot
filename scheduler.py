@@ -1,4 +1,4 @@
-# scheduler.py
+# scheduler.py (обновленная версия)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from datetime import datetime
@@ -8,13 +8,13 @@ from db import get_all_users
 from google_sheets_manager import sheets_manager
 from discord_bot import discord_bot
 
-# Настройки для групповых уведомлений
-GROUP_CHAT_ID = "@dark_syndicated"  # Чат/канал для уведомлений
-GROUP_TOPIC_ID = 7  # ID темы (если есть)
-GROUP_GUILD = "DarkSyndicate"  # Гильдия для групповых уведомлений
+# Настройки для групповых уведомлений (опционально)
+GROUP_CHAT_ID = None  # "@dark_syndicated" если нужно
+GROUP_TOPIC_ID = None  # 7 если есть
+GROUP_GUILD = None  # "DarkSyndicate" если нужно
 
 # Гильдии альянса
-ALLIANCE_GUILDS = ["Mercia", "DarkSyndicate", "HryKings", "XRAY"]
+ALLIANCE_GUILDS = ["Mercia", "DarkSyndicate", "HryKings"]
 
 # Переменная для хранения состояния отправки уведомлений о Tier 4
 tier4_notification_sent_today = False
@@ -59,41 +59,31 @@ async def send_notification(bot: Bot, time_key: str):
     target_tiers = tiers_info[time_key]['tiers']
     is_free_farm = tiers_info[time_key]['free_farm']
 
+    # Отправляем уведомления в Discord (теперь универсально для всех серверов)
+    await discord_bot.send_boss_notification(time_key, target_tiers, is_free_farm, schedule_key)
+
     # Проверяем боссов 4 тира для альянса при КАЖДОМ уведомлении (кроме FREE FARM)
     if not is_free_farm and not tier4_notification_sent_today:
         await check_and_send_tier4_alliance_notification(bot, schedule_key)
         tier4_notification_sent_today = True
 
-    # Отправляем уведомления в Discord
-    await send_discord_boss_notification(time_key, target_tiers, is_free_farm, schedule_key)
-
-    # Отправляем уведомления в группу/канал Telegram
+    # Отправляем уведомления в группу/канал Telegram (если настроено)
     if GROUP_CHAT_ID:
         await send_group_notification(bot, time_key, target_tiers, is_free_farm, schedule_key)
 
     # Отправляем уведомления пользователям в личку Telegram
     users = get_all_users()
-    for user_id, guild in users:
+    for user in users:
+        user_id = user['user_id']
+        guild = user['guild']
+
+        if not guild:
+            continue
+
         if is_free_farm:
             await send_free_farm_notification(bot, user_id, time_key, target_tiers)
         else:
             await send_guild_notification(bot, user_id, guild, time_key, target_tiers, schedule_key)
-
-
-async def send_discord_boss_notification(time_key: str, target_tiers: list, is_free_farm: bool, schedule_key: str):
-    """Отправляет уведомление о боссах в Discord"""
-    try:
-        await discord_bot.send_boss_notification(time_key, target_tiers, is_free_farm, schedule_key)
-    except Exception as e:
-        print(f"❌ Ошибка отправки уведомления в Discord: {e}")
-
-
-async def send_discord_rift_notification():
-    """Отправляет уведомление о разломах в Discord"""
-    try:
-        await discord_bot.send_rift_notification()
-    except Exception as e:
-        print(f"❌ Ошибка отправки уведомления о разломах в Discord: {e}")
 
 
 async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str):
@@ -112,7 +102,7 @@ async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str
         # Если нашли боссов 4 тира, отправляем уведомление
         if alliance_tier4_bosses:
             # Отправляем в Discord
-            await discord_bot.send_tier4_notification(alliance_tier4_bosses)
+            await discord_bot.send_tier4_notification()
 
             # Создаем общее сообщение для всех боссов
             boss_list = "\n".join([f"• {boss} (гильдия {guild})" for guild, boss in alliance_tier4_bosses])
@@ -124,7 +114,7 @@ async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str
                 f"⚔️ Не пропустите возможность помочь нашим гильдиям! ⚔️"
             )
 
-            # Отправляем в группу/канал Telegram
+            # Отправляем в группу/канал Telegram (если настроено)
             if GROUP_CHAT_ID:
                 send_params = {
                     'chat_id': GROUP_CHAT_ID,
@@ -139,7 +129,8 @@ async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str
 
             # Также отправляем всем пользователям бота
             users = get_all_users()
-            for user_id, user_guild in users:
+            for user in users:
+                user_id = user['user_id']
                 try:
                     await bot.send_message(user_id, message, parse_mode="HTML")
                 except Exception as e:
@@ -154,8 +145,11 @@ async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str
 
 
 async def send_group_notification(bot: Bot, time_key: str, target_tiers: list, is_free_farm: bool, schedule_key: str):
-    """Отправляет уведомление в группу/канал Telegram"""
+    """Отправляет уведомление в группу/канал Telegram (если настроено)"""
     try:
+        if not GROUP_CHAT_ID or not GROUP_GUILD:
+            return
+
         if is_free_farm:
             message = f"🎯 FREE FARM через 10 минут ({time_key})!\n\n"
 
@@ -317,9 +311,9 @@ async def send_guild_notification(bot: Bot, user_id: int, guild: str, time_key: 
 async def send_rift_notification(bot: Bot):
     """Отправляет уведомление о разломах за 10 минут до появления"""
     # Отправляем в Discord
-    await send_discord_rift_notification()
+    await discord_bot.send_rift_notification()
 
-    # Отправляем в группу/канал Telegram
+    # Отправляем в группу/канал Telegram (если настроено)
     if GROUP_CHAT_ID:
         try:
             message = "🌀 <b>РАЗЛОМЫ СКОРО ПОЯВЯТСЯ!</b>\n\n"
@@ -348,7 +342,8 @@ async def send_rift_notification(bot: Bot):
     message += "⚔️ Готовьтесь к битве!\n\n"
     message += "💎 Не пропустите возможность получить ценные награды!"
 
-    for user_id, guild in users:
+    for user in users:
+        user_id = user['user_id']
         try:
             await bot.send_message(user_id, message, parse_mode="HTML")
         except Exception as e:

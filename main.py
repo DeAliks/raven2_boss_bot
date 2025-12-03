@@ -764,5 +764,72 @@ async def main():
 
     await dp.start_polling(bot)
 
+
+@dp.message(Command("discord_servers"))
+async def cmd_discord_servers(message: types.Message):
+    """Показывает список всех Discord серверов с уведомлениями"""
+    try:
+        active_servers = db.get_all_active_discord_servers()
+
+        if not active_servers:
+            await message.answer("❌ Нет активных Discord серверов с уведомлениями.")
+            return
+
+        text = "📊 **Активные Discord серверы:**\n\n"
+
+        for server in active_servers:
+            text += f"**Сервер ID:** {server['guild_id']}\n"
+            text += f"**Канал ID:** {server['channel_id']}\n"
+            text += f"**Гильдия:** {server['selected_guild']}\n"
+            text += "─" * 30 + "\n"
+
+        await message.answer(text, parse_mode="HTML")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("discord_test_all"))
+async def cmd_discord_test_all(message: types.Message):
+    """Тестовая команда для отправки всех уведомлений во все Discord серверы"""
+    try:
+        await message.answer("🔄 Отправляю тестовые уведомления во все Discord серверы...")
+
+        # Тест уведомления о боссах
+        tz = pytz.timezone(TIMEZONE)
+        now = datetime.now(tz)
+        schedule_key = now.strftime('%d.%m')
+
+        await discord_bot.send_boss_notification("15:30", ['tier1', 'tier2'], False, schedule_key)
+
+        # Тест уведомления о разломах
+        await asyncio.sleep(1)
+        await discord_bot.send_rift_notification()
+
+        # Тест уведомления о Tier 4
+        await asyncio.sleep(1)
+        await discord_bot.send_tier4_notification()
+
+        await message.answer("✅ Тестовые уведомления отправлены во все Discord серверы!")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("discord_reset"))
+async def cmd_discord_reset(message: types.Message):
+    """Сбрасывает все настройки Discord серверов"""
+    try:
+        # Это административная команда, можно добавить проверку прав
+        await message.answer("🔄 Сбрасываю настройки Discord серверов...")
+
+        # Здесь можно добавить логику сброса, например:
+        # db.reset_all_discord_settings()
+
+        await message.answer("✅ Настройки Discord сброшены (нужна реализация в db.py)")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
 if __name__ == "__main__":
     asyncio.run(main())

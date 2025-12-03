@@ -1,11 +1,11 @@
-# discord_bot.py
+# discord_bot.py (универсальная версия)
 import discord
 from discord.ext import tasks, commands
 import asyncio
 from datetime import datetime
 import pytz
 import random
-from config import DISCORD_BOT_TOKEN, TIMEZONE, GROUP_GUILD, DISCORD_ROLE_ID
+from config import DISCORD_BOT_TOKEN, TIMEZONE
 from google_sheets_manager import sheets_manager
 import logging
 import db
@@ -13,11 +13,11 @@ import db
 # Настройка логирования
 logger = logging.getLogger(__name__)
 
-# Настройки Discord
-DISCORD_CHANNEL_NAME = "👻︱боссы"  # Название канала для уведомлений
-
 # ID администратора (ваш ID)
 ADMIN_USER_ID = 7774897924
+
+# Поддерживаемые гильдии
+SUPPORTED_GUILDS = ["All", "DarkSyndicate", "Mercia", "HryKings"]
 
 
 class DiscordBot:
@@ -27,9 +27,8 @@ class DiscordBot:
         intents.message_content = True
         intents.members = True
 
-        # Используем префикс '!' для текстовых команд и отключаем встроенную команду help
+        # Используем префикс '!' для текстовых команд
         self.bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
-        self.channel = None
         self.setup_handlers()
 
     def setup_handlers(self):
@@ -38,27 +37,199 @@ class DiscordBot:
             logger.info(f'✅ Discord бот вошел как {self.bot.user}')
             logger.info(f'✅ ID бота: {self.bot.user.id}')
 
-            # Находим нужный канал
-            for guild in self.bot.guilds:
-                logger.info(f'🔍 Поиск канала в гильдии: {guild.name}')
-                for channel in guild.channels:
-                    if channel.name == DISCORD_CHANNEL_NAME and isinstance(channel, discord.TextChannel):
-                        self.channel = channel
-                        logger.info(f'✅ Найден канал для уведомлений: {channel.name} (ID: {channel.id})')
-                        break
-                if self.channel:
-                    break
-
-            if not self.channel:
-                logger.error(f'❌ Канал "{DISCORD_CHANNEL_NAME}" не найден!')
+            # Запускаем фоновые задачи
+            self.check_bosses.start()
 
             # Выводим список зарегистрированных команд
             logger.info('📋 Зарегистрированные команды:')
             for command in self.bot.commands:
                 logger.info(f'  - !{command.name}')
 
-            # Запускаем фоновые задачи
-            self.check_bosses.start()
+        # Команда активации уведомлений
+        @self.bot.command(name="start_boss_alert")
+        async def start_boss_alert(ctx, guild_name: str = None):
+            """Активирует уведомления о боссах в текущем канале"""
+            try:
+                # Если гильдия не указана, показываем варианты
+                if not guild_name:
+                    embed = discord.Embed(
+                        title="🎯 Настройка уведомлений о боссах",
+                        description="Пожалуйста, выберите гильдию для уведомлений:",
+                        color=0x00ff00
+                    )
+
+                    embed.add_field(
+                        name="Доступные гильдии:",
+                        value="\n".join([f"• **{g}**" for g in SUPPORTED_GUILDS]),
+                        inline=False
+                    )
+
+                    embed.add_field(
+                        name="Пример использования:",
+                        value="`!start_boss_alert All` - для всех гильдий\n"
+                              "`!start_boss_alert DarkSyndicate` - только для DarkSyndicate",
+                        inline=False
+                    )
+
+                    await ctx.send(embed=embed)
+                    return
+
+                # Проверяем корректность названия гильдии
+                if guild_name not in SUPPORTED_GUILDS:
+                    available = ", ".join(SUPPORTED_GUILDS)
+                    await ctx.send(f"❌ Неверное название гильдии. Доступные варианты: {available}")
+                    return
+
+                # Сохраняем настройки в базу данных
+                guild_id = str(ctx.guild.id)
+                channel_id = str(ctx.channel.id)
+
+                db.set_discord_guild(guild_id, channel_id, guild_name)
+
+                embed = discord.Embed(
+                    title="✅ Уведомления активированы!",
+                    description=f"Канал: {ctx.channel.mention}\nГильдия: **{guild_name}**",
+                    color=0x00ff00
+                )
+
+                embed.add_field(
+                    name="📋 Что будет приходить:",
+                    value="• Уведомления о боссах за 10 минут до появления\n"
+                          "• Уведомления о разломах (Rifts)\n"
+                          "• Уведомления о боссах 4 тира",
+                    inline=False
+                )
+
+                if guild_name == "All":
+                    embed.add_field(
+                        name="ℹ️ Режим 'All':",
+                        value="Вы будете получать уведомления для ВСЕХ гильдий",
+                        inline=False
+                    )
+
+                embed.set_footer(text="Для отключения используйте !stop_boss_alert")
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде start_boss_alert: {e}")
+                await ctx.send("❌ Произошла ошибка при настройке уведомлений")
+
+        @self.bot.command(name="stop_boss_alert")
+        async def stop_boss_alert(ctx):
+            """Отключает уведомления о боссах"""
+            try:
+                guild_id = str(ctx.guild.id)
+                db.deactivate_discord_server(guild_id)
+
+                embed = discord.Embed(
+                    title="🔕 Уведомления отключены",
+                    description="Уведомления о боссах больше не будут приходить в этот канал.",
+                    color=0xff9900
+                )
+
+                embed.add_field(
+                    name="Для повторной активации:",
+                    value="Используйте команду `!start_boss_alert <гильдия>`",
+                    inline=False
+                )
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде stop_boss_alert: {e}")
+                await ctx.send("❌ Произошла ошибка при отключении уведомлений")
+
+        @self.bot.command(name="boss_status")
+        async def boss_status(ctx):
+            """Показывает текущий статус уведомлений"""
+            try:
+                guild_id = str(ctx.guild.id)
+                settings = db.get_discord_guild(guild_id)
+
+                embed = discord.Embed(
+                    title="📊 Статус уведомлений",
+                    color=0x0099ff
+                )
+
+                if settings:
+                    channel = ctx.guild.get_channel(int(settings['channel_id']))
+                    channel_mention = channel.mention if channel else f"ID: {settings['channel_id']}"
+
+                    embed.add_field(name="✅ Статус", value="АКТИВНЫ", inline=True)
+                    embed.add_field(name="📁 Гильдия", value=settings['selected_guild'], inline=True)
+                    embed.add_field(name="📢 Канал", value=channel_mention, inline=False)
+
+                    # Показываем сегодняшних боссов для выбранной гильдии
+                    today_bosses = await self.get_today_bosses_for_guild(settings['selected_guild'])
+                    if today_bosses and len(today_bosses) < 1000:
+                        embed.add_field(
+                            name="📅 Боссы на сегодня:",
+                            value=today_bosses,
+                            inline=False
+                        )
+                else:
+                    embed.add_field(
+                        name="❌ Статус",
+                        value="НЕ АКТИВНЫ",
+                        inline=False
+                    )
+
+                    embed.add_field(
+                        name="Для активации:",
+                        value="Используйте `!start_boss_alert <гильдия>`\n"
+                              f"Доступные гильдии: {', '.join(SUPPORTED_GUILDS)}",
+                        inline=False
+                    )
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде boss_status: {e}")
+                await ctx.send("❌ Произошла ошибка при получении статуса")
+
+        @self.bot.command(name="today_bosses")
+        async def today_bosses(ctx, guild_name: str = None):
+            """Показывает боссов на сегодня для указанной гильдии"""
+            try:
+                # Если гильдия не указана, берем из настроек сервера
+                if not guild_name:
+                    settings = db.get_discord_guild(str(ctx.guild.id))
+                    if settings:
+                        guild_name = settings['selected_guild']
+                    else:
+                        await ctx.send(
+                            "❌ Гильдия не указана и уведомления не настроены. Используйте: `!today_bosses <гильдия>`")
+                        return
+
+                # Получаем боссов на сегодня
+                bosses_text = await self.get_today_bosses_for_guild(guild_name)
+
+                if not bosses_text:
+                    await ctx.send(f"❌ На сегодня для гильдии **{guild_name}** боссов не найдено.")
+                    return
+
+                # Разбиваем на части если сообщение слишком длинное
+                if len(bosses_text) > 2000:
+                    chunks = [bosses_text[i:i + 2000] for i in range(0, len(bosses_text), 2000)]
+                    for chunk in chunks:
+                        embed = discord.Embed(
+                            title=f"📅 Боссы на сегодня - {guild_name}",
+                            description=chunk,
+                            color=0xff9900
+                        )
+                        await ctx.send(embed=embed)
+                else:
+                    embed = discord.Embed(
+                        title=f"📅 Боссы на сегодня - {guild_name}",
+                        description=bosses_text,
+                        color=0xff9900
+                    )
+                    await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде today_bosses: {e}")
+                await ctx.send("❌ Произошла ошибка при получении списка боссов")
 
         @self.bot.event
         async def on_command_error(ctx, error):
@@ -326,24 +497,30 @@ class DiscordBot:
             """Проверка прав администратора"""
             await ctx.send("✅ У вас есть права администратора!")
 
-        # Добавляем команду справки с другим именем
+        # Добавляем команду справки
         @self.bot.command(name="commands")
         async def commands_help(ctx):
             """Показывает справку по командам"""
             help_text = """
-**📋 Доступные команды:**
+**📋 Основные команды уведомлений:**
+
+`!start_boss_alert <гильдия>` - активировать уведомления
+• `!start_boss_alert All` - для всех гильдий
+• `!start_boss_alert DarkSyndicate` - только для DarkSyndicate
+• `!start_boss_alert Mercia` - только для Mercia
+• `!start_boss_alert HryKings` - только для HryKings
+
+`!stop_boss_alert` - отключить уведомления
+`!boss_status` - статус уведомлений
+`!today_bosses [гильдия]` - боссы на сегодня
+
+**🎲 Случайный выбор:**
 
 `!random <данные>` - случайный выбор
-  • `!random 1-10` - случайное число от 1 до 10
-  • `!random 7` - случайное число от 1 до 7
-  • `!random` с многострочным вводом для списка:
-    ```
-    !random Ника
-    Леся
-    Лось
-    ```
-
-`!commands` - показывает эту справку
+• `!random 1-10` - случайное число от 1 до 10
+• `!random 7` - случайное число от 1 до 7
+• Многострочный ввод для списка:
+!random Ника
 
 **🤖 Автоматические уведомления:**
 Бот автоматически отправляет уведомления о боссах и разломах за 10 минут до их появления.
@@ -394,102 +571,205 @@ class DiscordBot:
         logger.info("❌ Не удалось обработать входные данные")
         return None
 
-    # ... остальные методы остаются без изменений ...
-
-    def get_role_mention(self):
-        """Возвращает правильное упоминание роли"""
-        if DISCORD_ROLE_ID:
-            return f"<@&{DISCORD_ROLE_ID}>"
-        else:
-            logger.warning("❌ DISCORD_ROLE_ID не настроен, упоминания роли не будут работать")
-            return "@Raven2"
-
-    async def send_boss_notification(self, time_key: str, target_tiers: list, is_free_farm: bool, schedule_key: str):
-        """Отправляет уведомление о боссах в Discord"""
-        if not self.channel:
-            logger.error("Канал Discord не найден")
-            return
-
+    async def get_today_bosses_for_guild(self, guild_name: str):
+        """Получает боссов на сегодня для указанной гильдии"""
         try:
-            if is_free_farm:
-                message = f"🎯 **FREE FARM через 10 минут ({time_key})!**\n\n"
+            tz = pytz.timezone(TIMEZONE)
+            now = datetime.now(tz)
+            schedule_key = now.strftime('%d.%m')
 
-                if time_key == '03:30':
-                    message += "🟢 **1 тир**\n\n"
-                    message += "⚔️ Можно бить **ВСЕХ** боссов 1 тира!\n"
-                    message += "Независимо от вашей гильдии!"
-                elif time_key == '07:30':
-                    message += "🟢 **1 тир** + 🟡 **2 тир**\n\n"
-                    message += "⚔️ Можно бить **ВСЕХ** боссов 1 и 2 тира!\n"
-                    message += "Независимо от вашей гильдии!"
+            # Получаем данные из Google Таблицы
+            bosses_data = sheets_manager.get_today_bosses()
 
-                message += "\n🎉 **Удачи в охоте!**"
+            result = []
 
+            # Если выбрана гильдия "All", показываем всех боссов
+            if guild_name == "All":
+                # Группируем по гильдиям
+                guilds_dict = {}
+                for tier in ['tier1', 'tier2', 'tier3', 'tier4', 'tier5']:
+                    tier_bosses = bosses_data.get(tier, [])
+                    for guild, boss in tier_bosses:
+                        if guild not in guilds_dict:
+                            guilds_dict[guild] = []
+                        guilds_dict[guild].append((tier, boss))
+
+                # Формируем текст
+                for guild, bosses in guilds_dict.items():
+                    if bosses:  # Показываем только гильдии с боссами
+                        result.append(f"**🏷 {guild}:**")
+                        for tier, boss in bosses:
+                            tier_emoji = self.get_tier_emoji(tier)
+                            result.append(f"  {tier_emoji} {boss}")
+                        result.append("")
             else:
-                # Получаем данные из Google Таблицы
-                bosses_data = sheets_manager.get_today_bosses()
+                # Для конкретной гильдии
+                result.append(f"**🏷 {guild_name}:**")
+                bosses_found = False
 
-                # Фильтруем только нужные тиры для гильдии
-                bosses_to_show = {}
-                for tier in target_tiers:
-                    if tier in bosses_data:
-                        # Фильтруем боссов только для гильдии
-                        guild_bosses = [boss for guild_name, boss in bosses_data[tier] if guild_name == GROUP_GUILD]
-                        if guild_bosses:
-                            bosses_to_show[tier] = guild_bosses
+                for tier in ['tier1', 'tier2', 'tier3', 'tier4', 'tier5']:
+                    tier_bosses = bosses_data.get(tier, [])
+                    guild_bosses = [boss for g, boss in tier_bosses if g == guild_name]
 
-                if not bosses_to_show:
-                    return
+                    if guild_bosses:
+                        bosses_found = True
+                        tier_emoji = self.get_tier_emoji(tier)
+                        result.append(f"\n{tier_emoji} **{self.get_tier_name(tier)}:**")
+                        for boss in guild_bosses:
+                            result.append(f"  • {boss}")
 
-                # Формируем сообщение с боссами гильдии
-                message = f"⏰ **Через 10 минут ({time_key}) появятся боссы:**\n"
-                message += f"**Гильдия:** {GROUP_GUILD}\n"
-                message += f"**Слот:** {schedule_key}\n\n"
+                if not bosses_found:
+                    return f"Для гильдии **{guild_name}** на сегодня боссов не найдено."
 
-                # Добавляем боссов по тирам
-                for tier, bosses in bosses_to_show.items():
-                    if tier == "tier1":
-                        emoji = "🟢"
-                        tier_name = "1 тир"
-                    elif tier == "tier2":
-                        emoji = "🟡"
-                        tier_name = "2 тир"
-                    elif tier == "tier3":
-                        emoji = "🔴"
-                        tier_name = "3 тир"
-                    elif tier == "tier4":
-                        emoji = "🔵"
-                        tier_name = "4 тир"
-                    elif tier == "tier5":
-                        emoji = "🟣"
-                        tier_name = "5 тир"
-                    else:
-                        emoji = "⚪"
-                        tier_name = tier
-
-                    message += f"{emoji} **{tier_name}:**\n"
-                    for boss in bosses:
-                        message += f"• {boss}\n"
-                    message += "\n"
-
-                message += "💀 **Удачи в бою!**"
-
-            # Отправляем сообщение с правильным упоминанием роли
-            role_mention = self.get_role_mention()
-            full_message = f"{role_mention}\n{message}"
-
-            await self.channel.send(full_message)
-            logger.info(f"✅ Уведомление отправлено в Discord: {time_key}")
+            return "\n".join(result) if result else None
 
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки в Discord: {e}")
+            logger.error(f"❌ Ошибка при получении боссов для гильдии {guild_name}: {e}")
+            return None
+
+    def get_tier_emoji(self, tier: str):
+        """Возвращает эмодзи для тира"""
+        emoji_map = {
+            'tier1': '🟢',
+            'tier2': '🟡',
+            'tier3': '🔴',
+            'tier4': '🔵',
+            'tier5': '🟣'
+        }
+        return emoji_map.get(tier, '⚪')
+
+    def get_tier_name(self, tier: str):
+        """Возвращает название тира"""
+        name_map = {
+            'tier1': 'Тир 1',
+            'tier2': 'Тир 2',
+            'tier3': 'Тир 3',
+            'tier4': 'Тир 4',
+            'tier5': 'Тир 5'
+        }
+        return name_map.get(tier, tier)
+
+    async def send_boss_notification(self, time_key: str, target_tiers: list, is_free_farm: bool, schedule_key: str):
+        """Отправляет уведомление о боссах во все активные Discord серверы"""
+        try:
+            # Получаем все активные серверы
+            active_servers = db.get_all_active_discord_servers()
+
+            if not active_servers:
+                return
+
+            # Получаем данные о боссах
+            bosses_data = sheets_manager.get_today_bosses()
+
+            for server in active_servers:
+                guild_id = server['guild_id']
+                channel_id = server['channel_id']
+                selected_guild = server['selected_guild']
+
+                try:
+                    # Получаем канал
+                    guild = self.bot.get_guild(int(guild_id))
+                    if not guild:
+                        continue
+
+                    channel = guild.get_channel(int(channel_id))
+                    if not channel:
+                        continue
+
+                    # Формируем сообщение в зависимости от выбранной гильдии
+                    message = ""
+
+                    if is_free_farm:
+                        message = f"🎯 **FREE FARM через 10 минут ({time_key})!**\n\n"
+
+                        if time_key == '03:30':
+                            message += "🟢 **1 тир**\n\n"
+                            message += "⚔️ Можно бить **ВСЕХ** боссов 1 тира!\n"
+                            message += "Независимо от вашей гильдии!"
+                        elif time_key == '07:30':
+                            message += "🟢 **1 тир** + 🟡 **2 тир**\n\n"
+                            message += "⚔️ Можно бить **ВСЕХ** боссов 1 и 2 тира!\n"
+                            message += "Независимо от вашей гильдии!"
+
+                        message += "\n🎉 **Удачи в охоте!**"
+
+                    else:
+                        # Фильтруем боссов для выбранной гильдии
+                        bosses_to_show = {}
+
+                        if selected_guild == "All":
+                            # Для режима All показываем всех боссов, сгруппированных по гильдиям
+                            for tier in target_tiers:
+                                if tier in bosses_data:
+                                    all_bosses = bosses_data[tier]
+                                    if all_bosses:
+                                        bosses_to_show[tier] = all_bosses
+                        else:
+                            # Для конкретной гильдии
+                            for tier in target_tiers:
+                                if tier in bosses_data:
+                                    guild_bosses = [boss for guild_name, boss in bosses_data[tier] if
+                                                    guild_name == selected_guild]
+                                    if guild_bosses:
+                                        bosses_to_show[tier] = guild_bosses
+
+                        if not bosses_to_show:
+                            continue
+
+                        # Формируем сообщение
+                        message = f"⏰ **Через 10 минут ({time_key}) появятся боссы:**\n"
+                        message += f"**Гильдия:** {selected_guild}\n"
+                        message += f"**Слот:** {schedule_key}\n\n"
+
+                        if selected_guild == "All":
+                            # Для All группируем по гильдиям
+                            guilds_dict = {}
+                            for tier, bosses in bosses_to_show.items():
+                                tier_emoji = self.get_tier_emoji(tier)
+                                tier_name = self.get_tier_name(tier)
+
+                                for guild_name, boss_name in bosses:
+                                    if guild_name not in guilds_dict:
+                                        guilds_dict[guild_name] = []
+                                    guilds_dict[guild_name].append(f"{tier_emoji} {boss_name}")
+
+                            for guild_name, boss_list in guilds_dict.items():
+                                message += f"**🏷 {guild_name}:**\n"
+                                for boss_item in boss_list:
+                                    message += f"{boss_item}\n"
+                                message += "\n"
+                        else:
+                            # Для конкретной гильдии
+                            for tier, bosses in bosses_to_show.items():
+                                tier_emoji = self.get_tier_emoji(tier)
+                                tier_name = self.get_tier_name(tier)
+
+                                message += f"{tier_emoji} **{tier_name}:**\n"
+                                for boss in bosses:
+                                    message += f"• {boss}\n"
+                                message += "\n"
+
+                        message += "💀 **Удачи в бою!**"
+
+                    # Отправляем сообщение
+                    await channel.send(message)
+                    logger.info(f"✅ Уведомление отправлено в Discord сервер {guild.name}, канал {channel.name}")
+
+                except Exception as e:
+                    logger.error(f"❌ Ошибка отправки уведомления на сервер {guild_id}: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"❌ Общая ошибка в send_boss_notification: {e}")
 
     async def send_rift_notification(self):
-        """Отправляет уведомление о разломах в Discord"""
-        if not self.channel:
-            return
-
+        """Отправляет уведомление о разломах во все активные Discord серверы"""
         try:
+            active_servers = db.get_all_active_discord_servers()
+
+            if not active_servers:
+                return
+
             message = (
                 "🌀 **РАЗЛОМЫ СКОРО ПОЯВЯТСЯ!** 🌀\n\n"
                 "⏰ Через 10 минут откроются разломы\n"
@@ -497,39 +777,88 @@ class DiscordBot:
                 "💎 Не пропустите возможность получить ценные награды!"
             )
 
-            role_mention = self.get_role_mention()
-            full_message = f"{role_mention}\n{message}"
+            for server in active_servers:
+                guild_id = server['guild_id']
+                channel_id = server['channel_id']
 
-            await self.channel.send(full_message)
-            logger.info("✅ Уведомление о разломах отправлено в Discord")
+                try:
+                    guild = self.bot.get_guild(int(guild_id))
+                    if not guild:
+                        continue
+
+                    channel = guild.get_channel(int(channel_id))
+                    if not channel:
+                        continue
+
+                    await channel.send(message)
+                    logger.info(f"✅ Уведомление о разломах отправлено в Discord сервер {guild.name}")
+
+                except Exception as e:
+                    logger.error(f"❌ Ошибка отправки уведомления о разломах на сервер {guild_id}: {e}")
+                    continue
 
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки уведомления о разломах в Discord: {e}")
+            logger.error(f"❌ Общая ошибка в send_rift_notification: {e}")
 
-    async def send_tier4_notification(self, alliance_bosses: list):
-        """Отправляет уведомление о боссах 4 тира в Discord"""
-        if not self.channel:
-            return
-
+    async def send_tier4_notification(self):
+        """Отправляет уведомление о боссах 4 тира во все активные Discord серверы"""
         try:
-            if alliance_bosses:
-                boss_list = "\n".join([f"• {boss} (**гильдия {guild}**)" for guild, boss in alliance_bosses])
+            # Получаем данные о боссах 4 тира
+            bosses_data = sheets_manager.get_today_bosses()
+            tier4_bosses = bosses_data.get('tier4', [])
 
-                message = (
-                    "🔔 **ВНИМАНИЕ АЛЬЯНС!** 🔔\n\n"
-                    f"Обратите внимание! Сегодня есть боссы **Тира 4**:\n\n"
-                    f"{boss_list}\n\n"
-                    f"⚔️ **Не пропустите возможность помочь нашим гильдиям!** ⚔️"
-                )
+            if not tier4_bosses:
+                return
 
-                role_mention = self.get_role_mention()
-                full_message = f"{role_mention}\n{message}"
+            active_servers = db.get_all_active_discord_servers()
 
-                await self.channel.send(full_message)
-                logger.info(f"✅ Уведомление о {len(alliance_bosses)} боссах 4 тира отправлено в Discord")
+            if not active_servers:
+                return
+
+            for server in active_servers:
+                guild_id = server['guild_id']
+                channel_id = server['channel_id']
+                selected_guild = server['selected_guild']
+
+                try:
+                    guild = self.bot.get_guild(int(guild_id))
+                    if not guild:
+                        continue
+
+                    channel = guild.get_channel(int(channel_id))
+                    if not channel:
+                        continue
+
+                    # Фильтруем боссов в зависимости от выбранной гильдии
+                    bosses_to_show = []
+
+                    if selected_guild == "All":
+                        bosses_to_show = tier4_bosses
+                    else:
+                        bosses_to_show = [(g, b) for g, b in tier4_bosses if g == selected_guild]
+
+                    if not bosses_to_show:
+                        continue
+
+                    # Формируем сообщение
+                    boss_list = "\n".join([f"• {boss} (**гильдия {guild}**)" for guild, boss in bosses_to_show])
+
+                    message = (
+                        "🔔 **ВНИМАНИЕ АЛЬЯНС!** 🔔\n\n"
+                        f"Обратите внимание! Сегодня есть боссы **Тира 4**:\n\n"
+                        f"{boss_list}\n\n"
+                        f"⚔️ **Не пропустите возможность помочь нашим гильдиям!** ⚔️"
+                    )
+
+                    await channel.send(message)
+                    logger.info(f"✅ Уведомление о Tier 4 отправлено в Discord сервер {guild.name}")
+
+                except Exception as e:
+                    logger.error(f"❌ Ошибка отправки уведомления о Tier 4 на сервер {guild_id}: {e}")
+                    continue
 
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки уведомления о Tier 4 в Discord: {e}")
+            logger.error(f"❌ Общая ошибка в send_tier4_notification: {e}")
 
     async def send_test_boss_notification(self):
         """Отправляет тестовое уведомление о боссах в Discord"""
@@ -565,7 +894,36 @@ class DiscordBot:
         try:
             # Тестовые данные для боссов 4 тира
             test_bosses = [("Mercia", "Двуликий Моргон"), ("DarkSyndicate", "Марионетка Нидрок")]
-            await self.send_tier4_notification(test_bosses)
+
+            # Отправляем в активные серверы
+            active_servers = db.get_all_active_discord_servers()
+            for server in active_servers:
+                guild_id = server['guild_id']
+                channel_id = server['channel_id']
+
+                try:
+                    guild = self.bot.get_guild(int(guild_id))
+                    if not guild:
+                        continue
+
+                    channel = guild.get_channel(int(channel_id))
+                    if not channel:
+                        continue
+
+                    boss_list = "\n".join([f"• {boss} (**гильдия {guild}**)" for guild, boss in test_bosses])
+                    message = (
+                        "🔔 **ТЕСТ: ВНИМАНИЕ АЛЬЯНС!** 🔔\n\n"
+                        f"Тестовое уведомление о боссах **Тира 4**:\n\n"
+                        f"{boss_list}\n\n"
+                        f"⚔️ **Тестовое уведомление!** ⚔️"
+                    )
+
+                    await channel.send(message)
+
+                except Exception as e:
+                    logger.error(f"❌ Ошибка отправки тестового уведомления о Tier 4: {e}")
+                    continue
+
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка отправки тестового уведомления о Tier 4: {e}")
@@ -573,7 +931,7 @@ class DiscordBot:
 
     @tasks.loop(minutes=1)
     async def check_bosses(self):
-        """Проверяет время и отправляет уведомления"""
+        """Проверяет время и отправляет уведомления во все активные серверы"""
         try:
             tz = pytz.timezone(TIMEZONE)
             now = datetime.now(tz)
@@ -609,37 +967,10 @@ class DiscordBot:
 
             # Проверяем боссов 4 тира в 19:20
             if current_time == '19:20':
-                await self.check_and_send_tier4_notification()
+                await self.send_tier4_notification()
 
         except Exception as e:
             logger.error(f"❌ Ошибка в check_bosses: {e}")
-
-    async def check_and_send_tier4_notification(self):
-        """Проверяет и отправляет уведомление о боссах 4 тира"""
-        try:
-            # Получаем данные о боссах на сегодня
-            bosses_data = sheets_manager.get_today_bosses()
-
-            # Получаем боссов 4 тира
-            tier4_bosses = bosses_data.get('tier4', [])
-
-            if tier4_bosses:
-                # Фильтруем только боссов нашего альянса (Mercia, DarkSyndicate, HryKings)
-                alliance_bosses = []
-                for guild, boss in tier4_bosses:
-                    if guild in ['Mercia', 'DarkSyndicate', 'HryKings']:
-                        alliance_bosses.append((guild, boss))
-
-                if alliance_bosses:
-                    await self.send_tier4_notification(alliance_bosses)
-                    logger.info(f"✅ Уведомление о Tier 4 отправлено в 19:20. Найдено {len(alliance_bosses)} боссов")
-                else:
-                    logger.info("ℹ️ Боссы 4 тира найдены, но не для нашего альянса")
-            else:
-                logger.info("ℹ️ Боссы 4 тира не найдены на сегодня")
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка при проверке боссов 4 тира: {e}")
 
     @check_bosses.before_loop
     async def before_check_bosses(self):
