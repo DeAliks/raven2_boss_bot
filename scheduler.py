@@ -1,4 +1,4 @@
-# scheduler.py (обновленная версия)
+# scheduler.py (обновленная версия с RussianTeam)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from datetime import datetime
@@ -13,8 +13,8 @@ GROUP_CHAT_ID = None  # "@dark_syndicated" если нужно
 GROUP_TOPIC_ID = None  # 7 если есть
 GROUP_GUILD = None  # "DarkSyndicate" если нужно
 
-# Гильдии альянса
-ALLIANCE_GUILDS = ["Mercia", "DarkSyndicate", "HryKings"]
+# Гильдии альянса (теперь с RussianTeam)
+ALLIANCE_GUILDS = ["Mercia", "DarkSyndicate", "HryKings", "RussianTeam"]
 
 # Переменная для хранения состояния отправки уведомлений о Tier 4
 tier4_notification_sent_today = False
@@ -87,7 +87,7 @@ async def send_notification(bot: Bot, time_key: str):
 
 
 async def check_and_send_tier4_alliance_notification(bot: Bot, schedule_key: str):
-    """Проверяет и отправляет уведомления о боссах 4 тира для альянса"""
+    """Проверяет и отправляет уведомления о боссах 4 тира для альянса (включая RussianTeam)"""
     try:
         # Получаем данные из Google Таблицы
         bosses_data = sheets_manager.get_today_bosses()

@@ -1,4 +1,4 @@
-# discord_bot.py (универсальная версия)
+# discord_bot.py (универсальная версия с новой гильдией)
 import discord
 from discord.ext import tasks, commands
 import asyncio
@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 # ID администратора (ваш ID)
 ADMIN_USER_ID = 7774897924
 
-# Поддерживаемые гильдии
-SUPPORTED_GUILDS = ["All", "DarkSyndicate", "Mercia", "HryKings"]
+# Поддерживаемые гильдии (теперь с RussianTeam)
+SUPPORTED_GUILDS = ["All", "DarkSyndicate", "Mercia", "HryKings", "RussianTeam"]
 
 
 class DiscordBot:
@@ -67,7 +67,8 @@ class DiscordBot:
                     embed.add_field(
                         name="Пример использования:",
                         value="`!start_boss_alert All` - для всех гильдий\n"
-                              "`!start_boss_alert DarkSyndicate` - только для DarkSyndicate",
+                              "`!start_boss_alert DarkSyndicate` - только для DarkSyndicate\n"
+                              "`!start_boss_alert RussianTeam` - только для RussianTeam",
                         inline=False
                     )
 
@@ -201,6 +202,12 @@ class DiscordBot:
                         await ctx.send(
                             "❌ Гильдия не указана и уведомления не настроены. Используйте: `!today_bosses <гильдия>`")
                         return
+
+                # Проверяем, поддерживается ли гильдия
+                if guild_name not in SUPPORTED_GUILDS and guild_name != "All":
+                    available = ", ".join(SUPPORTED_GUILDS)
+                    await ctx.send(f"❌ Гильдия '{guild_name}' не поддерживается. Доступные: {available}")
+                    return
 
                 # Получаем боссов на сегодня
                 bosses_text = await self.get_today_bosses_for_guild(guild_name)
@@ -501,7 +508,7 @@ class DiscordBot:
         @self.bot.command(name="commands")
         async def commands_help(ctx):
             """Показывает справку по командам"""
-            help_text = """
+            help_text = f"""
 **📋 Основные команды уведомлений:**
 
 `!start_boss_alert <гильдия>` - активировать уведомления
@@ -509,6 +516,7 @@ class DiscordBot:
 • `!start_boss_alert DarkSyndicate` - только для DarkSyndicate
 • `!start_boss_alert Mercia` - только для Mercia
 • `!start_boss_alert HryKings` - только для HryKings
+• `!start_boss_alert RussianTeam` - только для RussianTeam
 
 `!stop_boss_alert` - отключить уведомления
 `!boss_status` - статус уведомлений
@@ -519,8 +527,9 @@ class DiscordBot:
 `!random <данные>` - случайный выбор
 • `!random 1-10` - случайное число от 1 до 10
 • `!random 7` - случайное число от 1 до 7
-• Многострочный ввод для списка:
-!random Ника
+• Многострочный ввод для списка:!random Ника
+Леся
+Лось
 
 **🤖 Автоматические уведомления:**
 Бот автоматически отправляет уведомления о боссах и разломах за 10 минут до их появления.
@@ -893,7 +902,8 @@ class DiscordBot:
         """Отправляет тестовое уведомление о боссах 4 тира в Discord"""
         try:
             # Тестовые данные для боссов 4 тира
-            test_bosses = [("Mercia", "Двуликий Моргон"), ("DarkSyndicate", "Марионетка Нидрок")]
+            test_bosses = [("Mercia", "Двуликий Моргон"), ("DarkSyndicate", "Марионетка Нидрок"),
+                           ("RussianTeam", "Древний дракон Истерия")]
 
             # Отправляем в активные серверы
             active_servers = db.get_all_active_discord_servers()

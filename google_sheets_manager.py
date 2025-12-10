@@ -1,4 +1,4 @@
-# google_sheets_manager.py
+# google_sheets_manager.py (обновленная для новой структуры)
 import gspread
 from cachetools import cached, TTLCache
 from datetime import datetime
@@ -74,8 +74,8 @@ class GoogleSheetsManager:
                     f"Доступные даты в заголовке: {[header_row[i] for i in range(0, len(header_row), 2) if header_row[i].strip()]}")
                 return bosses_data
 
-            # Определяем границы каждого раздела (тира)
-            sections = self._find_section_boundaries(all_data)
+            # Определяем границы каждого раздела (тира) для НОВОЙ структуры
+            sections = self._find_section_boundaries_new_structure(all_data)
 
             # Обрабатываем каждый раздел
             for section_name, start_row, end_row in sections:
@@ -143,8 +143,8 @@ class GoogleSheetsManager:
             logger.error(f"❌ Ошибка при чтении данных из Google Таблицы: {e}")
             return {'tier1': [], 'tier2': [], 'tier3': [], 'tier4': [], 'tier5': []}
 
-    def _find_section_boundaries(self, all_data):
-        """Находит границы разделов (тиров) в таблице."""
+    def _find_section_boundaries_new_structure(self, all_data):
+        """Находит границы разделов (тиров) в таблице для НОВОЙ структуры."""
         sections = []
         current_section = None
         section_start = -1
@@ -155,8 +155,8 @@ class GoogleSheetsManager:
 
             first_cell = row[0].strip() if row[0] else ""
 
-            # Проверяем, является ли строка началом нового раздела
-            section_match = self._detect_section(first_cell)
+            # Проверяем, является ли строка началом нового раздела (новая структура)
+            section_match = self._detect_section_new_structure(first_cell)
             if section_match:
                 # Сохраняем предыдущий раздел
                 if current_section and section_start != -1:
@@ -173,10 +173,11 @@ class GoogleSheetsManager:
 
         return sections
 
-    def _detect_section(self, cell_content):
-        """Определяет, является ли ячейка началом раздела."""
+    def _detect_section_new_structure(self, cell_content):
+        """Определяет, является ли ячейка началом раздела в НОВОЙ структуре."""
         lower_content = cell_content.lower()
 
+        # Новая структура таблицы
         if 'тир 1' in lower_content or '1 тир' in lower_content:
             return 'tier1'
         elif 'тир 2' in lower_content or '2 тир' in lower_content:
@@ -187,7 +188,7 @@ class GoogleSheetsManager:
             return 'tier4'
         elif 'тир 5' in lower_content or '5 тир' in lower_content:
             return 'tier5'
-        elif 'боссы бездны' in lower_content:
+        elif 'боссы бездны' in lower_content or 'бездны' in lower_content:
             return 'abyss'
 
         return None
@@ -214,12 +215,13 @@ class GoogleSheetsManager:
         guild_map = {
             'darksyndicate': 'DarkSyndicate',
             'dark syndicate': 'DarkSyndicate',
-            'darksindikat': 'DarkSyndicate',
-            'dark sindikat': 'DarkSyndicate',
+            'dark_syndicate': 'DarkSyndicate',
             'mercia': 'Mercia',
-            'xray': 'XRAY',
             'hrykings': 'HryKings',
-            'hrkings': 'HryKings'
+            'hry kings': 'HryKings',
+            'russianteam': 'RussianTeam',
+            'russian team': 'RussianTeam',
+            'russian': 'RussianTeam'
         }
 
         normalized = guild_name.strip()
@@ -236,7 +238,7 @@ class GoogleSheetsManager:
                 return value
 
         # Если гильдия не найдена в маппинге, но соответствует ожидаемым названиям
-        if normalized in ['Mercia', 'DarkSyndicate', 'HryKings', 'XRAY']:
+        if normalized in ['Mercia', 'DarkSyndicate', 'HryKings', 'RussianTeam']:
             return normalized
 
         logger.warning(f"⚠️ Неизвестное название гильдии: '{guild_name}' (нормализовано: '{normalized}')")

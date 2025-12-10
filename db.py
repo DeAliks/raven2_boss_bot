@@ -1,4 +1,4 @@
-# db.py (полная версия с новыми таблицами)
+# db.py (полная версия)
 import sqlite3
 import logging
 from datetime import datetime

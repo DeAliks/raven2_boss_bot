@@ -82,7 +82,10 @@ def normalize_guild_name(guild_name):
         'dark_syndicate': 'DarkSyndicate',
         'mercia': 'Mercia',
         'hrykings': 'HryKings',
-        'russianteam': 'RussianTeam'
+        'hry kings': 'HryKings',
+        'russianteam': 'RussianTeam',
+        'russian team': 'RussianTeam',
+        'russian': 'RussianTeam'
     }
 
     normalized = guild_name.strip()
@@ -190,7 +193,7 @@ async def cmd_start(message: types.Message):
         await message.answer(f"Привет! {status_msg}\n\nВыберите вашу гильдию:", reply_markup=guild_selection_keyboard())
 
 
-@dp.message(lambda msg: msg.text in ["Mercia", "DarkSyndicate", "HryKings", "XRAY"])
+@dp.message(lambda msg: msg.text in ["Mercia", "DarkSyndicate", "HryKings", "RussianTeam"])
 async def handle_choose_guild(message: types.Message):
     # Сохраняем выбранную гильдию как есть (уже нормализована в клавиатуре)
     set_guild(message.from_user.id, message.text)
@@ -662,7 +665,7 @@ async def cmd_everyone(message: types.Message):
             group_announcement = (
                 f"📢 <b>ОБЪЯВЛЕНИЕ ДЛЯ ВСЕХ УЧАСТНИКОВ АЛЬЯНСА</b> 📢\n\n"
                 f"{announcement_text}\n\n"
-                f"<i>Сообщение также отправлено в личные сообщения {success_count} участникам бота</i>"
+                f"<i>Сообщение также отправлено в личные сообщения {success_count} участникам бota</i>"
             )
 
             send_params = {
@@ -708,62 +711,6 @@ async def cmd_reset_tier4_notifications(message: types.Message):
     tier4_notification_sent_today = False
 
     await message.answer("✅ Флаг уведомлений о Tier 4 сброшен. Следующее уведомление отправится снова.")
-
-# -------------------- Запуск --------------------
-async def main():
-    init_db()
-
-    print("✅ База данных инициализирована")
-
-    # Запускаем Discord бота в отдельном потоке, чтобы не блокировать asyncio
-    def run_discord_bot():
-        """Запускает Discord бота в отдельном потоке"""
-        try:
-            discord_bot.run()  # Просто вызываем метод run нашего экземпляра
-        except Exception as e:
-            logger.error(f"❌ Ошибка запуска Discord бота: {e}")
-
-    # Запускаем Discord бота в отдельном потоке
-    discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
-    discord_thread.start()
-    print("✅ Discord бот запущен в отдельном потоке")
-
-    # Проверяем подключение к Google Таблице
-    if GOOGLE_SHEETS_AVAILABLE and sheets_manager.connected:
-        try:
-            test_data = sheets_manager.get_today_bosses()
-            boss_count = sum(len(test_data.get(tier, [])) for tier in ['tier1', 'tier2', 'tier3', 'tier4', 'tier5'])
-            print(f"✅ Подключение к Google Таблице успешно. Получено {boss_count} боссов")
-        except Exception as e:
-            print(f"❌ Ошибка при тестировании Google Таблицы: {e}")
-    else:
-        print("❌ Google Sheets недоступен. Бот будет работать с ограниченной функциональностью.")
-
-    setup_scheduler(bot)
-
-    print("✅ Бот запущен и ожидает события...")
-    print("\n📋 Доступные команды для Discord:")
-    print("  !random - случайный выбор из списка или диапазона чисел")
-    print("  !commands - справка по командам")
-    print("  !admincheck - проверка прав администратора")
-    print("  !userinfo - информация о пользователе")
-    print("  !userstats - статистика пользователей")
-    print("  !userlist - список пользователей")
-    print("  !ban - забанить пользователя")
-    print("  !unban - разбанить пользователя")
-    print("  !banguild - забанить гильдию")
-    print("  !unbanguild - разбанить гильдию")
-
-    print("\n📋 Доступные команды для Telegram:")
-    print("  /start - начать работу")
-    print("  /everyone - рассылка всем пользователям")
-    print("  /test_discord_bosses - тест уведомления Discord о боссах")
-    print("  /test_discord_rift - тест уведомления Discord о разломах")
-    print("  /test_discord_tier4 - тест уведомления Discord о Tier 4")
-    print("  /test_discord_all - тест всех уведомлений Discord")
-    print("  /discord_status - статус Discord бота")
-
-    await dp.start_polling(bot)
 
 
 @dp.message(Command("discord_servers"))
@@ -831,6 +778,68 @@ async def cmd_discord_reset(message: types.Message):
 
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
+
+# -------------------- Запуск --------------------
+async def main():
+    init_db()
+
+    print("✅ База данных инициализирована")
+
+    # Запускаем Discord бота в отдельном потоке, чтобы не блокировать asyncio
+    def run_discord_bot():
+        """Запускает Discord бота в отдельном потоке"""
+        try:
+            discord_bot.run()  # Просто вызываем метод run нашего экземпляра
+        except Exception as e:
+            logger.error(f"❌ Ошибка запуска Discord бота: {e}")
+
+    # Запускаем Discord бота в отдельном потоке
+    discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
+    discord_thread.start()
+    print("✅ Discord бот запущен в отдельном потоке")
+
+    # Проверяем подключение к Google Таблице
+    if GOOGLE_SHEETS_AVAILABLE and sheets_manager.connected:
+        try:
+            test_data = sheets_manager.get_today_bosses()
+            boss_count = sum(len(test_data.get(tier, [])) for tier in ['tier1', 'tier2', 'tier3', 'tier4', 'tier5'])
+            print(f"✅ Подключение к Google Таблице успешно. Получено {boss_count} боссов")
+        except Exception as e:
+            print(f"❌ Ошибка при тестировании Google Таблицы: {e}")
+    else:
+        print("❌ Google Sheets недоступен. Бот будет работать с ограниченной функциональностью.")
+
+    setup_scheduler(bot)
+
+    print("✅ Бот запущен и ожидает события...")
+    print("\n📋 Доступные команды для Discord:")
+    print("  !start_boss_alert <гильдия> - активировать уведомления")
+    print("  !stop_boss_alert - отключить уведомления")
+    print("  !boss_status - статус уведомлений")
+    print("  !today_bosses [гильдия] - боссы на сегодня")
+    print("  !random - случайный выбор из списка или диапазона чисел")
+    print("  !commands - справка по командам")
+    print("  !admincheck - проверка прав администратора")
+    print("  !userinfo - информация о пользователе")
+    print("  !userstats - статистика пользователей")
+    print("  !userlist - список пользователей")
+    print("  !ban - забанить пользователя")
+    print("  !unban - разбанить пользователя")
+    print("  !banguild - забанить гильдию")
+    print("  !unbanguild - разбанить гильдию")
+
+    print("\n📋 Доступные команды для Telegram:")
+    print("  /start - начать работу")
+    print("  /everyone - рассылка всем пользователям")
+    print("  /test_discord_bosses - тест уведомления Discord о боссах")
+    print("  /test_discord_rift - тест уведомления Discord о разломах")
+    print("  /test_discord_tier4 - тест уведомления Discord о Tier 4")
+    print("  /test_discord_all - тест всех уведомлений Discord")
+    print("  /discord_status - статус Discord бота")
+    print("  /discord_servers - список активных Discord серверов")
+    print("  /discord_test_all - тест уведомлений на всех серверах")
+
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
