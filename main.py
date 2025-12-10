@@ -62,7 +62,8 @@ def main_menu_keyboard():
 
 def guild_selection_keyboard():
     buttons = [
-        [types.KeyboardButton(text="Mercia"), types.KeyboardButton(text="DarkSyndicate"), types.KeyboardButton(text="HryKings")],
+        [types.KeyboardButton(text="Mercia"), types.KeyboardButton(text="DarkSyndicate")],
+        [types.KeyboardButton(text="RussianTeam"), types.KeyboardButton(text="HryKings")],
         [types.KeyboardButton(text="Назад в меню")]
     ]
     return types.ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
@@ -81,7 +82,7 @@ def normalize_guild_name(guild_name):
         'dark_syndicate': 'DarkSyndicate',
         'mercia': 'Mercia',
         'hrykings': 'HryKings',
-        'xray': 'XRAY'
+        'russianteam': 'RussianTeam'
     }
 
     normalized = guild_name.strip()
