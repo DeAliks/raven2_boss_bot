@@ -811,34 +811,6 @@ async def main():
 
     setup_scheduler(bot)
 
-    print("✅ Бот запущен и ожидает события...")
-    print("\n📋 Доступные команды для Discord:")
-    print("  !start_boss_alert <гильдия> - активировать уведомления")
-    print("  !stop_boss_alert - отключить уведомления")
-    print("  !boss_status - статус уведомлений")
-    print("  !today_bosses [гильдия] - боссы на сегодня")
-    print("  !random - случайный выбор из списка или диапазона чисел")
-    print("  !commands - справка по командам")
-    print("  !admincheck - проверка прав администратора")
-    print("  !userinfo - информация о пользователе")
-    print("  !userstats - статистика пользователей")
-    print("  !userlist - список пользователей")
-    print("  !ban - забанить пользователя")
-    print("  !unban - разбанить пользователя")
-    print("  !banguild - забанить гильдию")
-    print("  !unbanguild - разбанить гильдию")
-
-    print("\n📋 Доступные команды для Telegram:")
-    print("  /start - начать работу")
-    print("  /everyone - рассылка всем пользователям")
-    print("  /test_discord_bosses - тест уведомления Discord о боссах")
-    print("  /test_discord_rift - тест уведомления Discord о разломах")
-    print("  /test_discord_tier4 - тест уведомления Discord о Tier 4")
-    print("  /test_discord_all - тест всех уведомлений Discord")
-    print("  /discord_status - статус Discord бота")
-    print("  /discord_servers - список активных Discord серверов")
-    print("  /discord_test_all - тест уведомлений на всех серверах")
-
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
