@@ -152,7 +152,7 @@ class TimeInputModal(Modal):
                 f"❌ Произошла ошибка: {str(e)}",
                 ephemeral=True
             )
-# Заменяем класс BossSelectView на обновленную версию:
+
 
 class BossSelectView(View):
     """View для выбора босса с автоматическим определением гильдии"""
@@ -177,30 +177,73 @@ class BossSelectView(View):
     async def select_callback(self, interaction: discord.Interaction):
         selected_boss = interaction.data['values'][0]
 
-        # ОПРЕДЕЛЯЕМ ГИЛЬДИЮ ИЗ ТАБЛИЦЫ
+        # Определяем гильдию из таблицы
         guild_name = sheets_manager.get_guild_for_tier4_boss(selected_boss)
 
         if not guild_name:
-            # Если гильдия не найдена, используем настройки сервера как запасной вариант
+            # Если гильдия не найдена, используем настройки сервера
             guild_id = str(interaction.guild.id)
             settings = db.get_discord_guild(guild_id)
             guild_name = settings['selected_guild'] if settings else "DarkSyndicate"
 
-            # Уведомляем пользователя
-            await interaction.response.send_message(
+            # Открываем модальное окно
+            modal = TimeInputModal(selected_boss, guild_name)
+            await interaction.response.send_modal(modal)
+
+            # Отправляем предупреждение через followup
+            await interaction.followup.send(
                 f"⚠️ **Внимание:** Босс '{selected_boss}' не найден в расписании.\n"
                 f"Используется гильдия из настроек сервера: **{guild_name}**",
                 ephemeral=True
             )
         else:
-            await interaction.response.send_message(
-                f"✅ Найдена гильдия для босса: **{guild_name}**",
+            # Открываем модальное окно
+            modal = TimeInputModal(selected_boss, guild_name)
+            await interaction.response.send_modal(modal)
+
+    def __init__(self, boss_list: list):
+        super().__init__(timeout=60)
+        self.boss_list = boss_list
+
+        # Создаем выпадающий список
+        select = Select(
+            placeholder="Выберите босса...",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(label=boss, value=boss)
+                for boss in boss_list
+            ]
+        )
+        select.callback = self.select_callback
+        self.add_item(select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        selected_boss = interaction.data['values'][0]
+
+        # Определяем гильдию из таблицы
+        guild_name = sheets_manager.get_guild_for_tier4_boss(selected_boss)
+
+        if not guild_name:
+            # Если гильдия не найдена, используем настройки сервера
+            guild_id = str(interaction.guild.id)
+            settings = db.get_discord_guild(guild_id)
+            guild_name = settings['selected_guild'] if settings else "DarkSyndicate"
+
+            # Открываем модальное окно БЕЗ предварительного ответа
+            modal = TimeInputModal(selected_boss, guild_name)
+            await interaction.response.send_modal(modal)
+
+            # Отправляем предупреждение через followup (после модального окна)
+            await interaction.followup.send(
+                f"⚠️ **Внимание:** Босс '{selected_boss}' не найден в расписании.\n"
+                f"Используется гильдия из настроек сервера: **{guild_name}**",
                 ephemeral=True
             )
-
-        # Открываем модальное окно для ввода времени
-        modal = TimeInputModal(selected_boss, guild_name)
-        await interaction.response.send_modal(modal)
+        else:
+            # Открываем модальное окно
+            modal = TimeInputModal(selected_boss, guild_name)
+            await interaction.response.send_modal(modal)
 
 class DiscordBot:
     def __init__(self):

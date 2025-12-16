@@ -398,9 +398,16 @@ class GoogleSheetsManager:
             bosses_data = self.get_today_bosses()
             tier4_bosses = bosses_data.get('tier4', [])
 
+            # Нормализуем имя босса для сравнения (удаляем пробелы, приводим к нижнему регистру)
+            normalized_boss_name = boss_name.strip().lower()
+
+            logger.info(f"🔍 Поиск гильдии для босса '{boss_name}' (нормализовано: '{normalized_boss_name}')")
+
             # Ищем гильдию для указанного босса
             for guild, boss in tier4_bosses:
-                if boss.strip() == boss_name.strip():
+                normalized_boss = boss.strip().lower()
+                if normalized_boss == normalized_boss_name:
+                    logger.info(f"✅ Найдена гильдия для босса '{boss}': {guild}")
                     return guild
 
             # Если босс не найден, логируем предупреждение
