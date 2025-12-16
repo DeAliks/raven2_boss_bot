@@ -265,6 +265,11 @@ class DiscordBot:
             # Запускаем фоновые задачи
             self.check_bosses.start()
 
+            # ЗАПУСКАЕМ ЗАДАЧУ ДЛЯ ПРОВЕРКИ СПАВНОВ
+            if not self.check_scheduled_spawns.is_running():
+                self.check_scheduled_spawns.start()
+                logger.info("✅ Задача check_scheduled_spawns запущена")
+
             # Выводим список зарегистрированных команд
             logger.info('📋 Зарегистрированные команды:')
             for command in self.bot.commands:
@@ -1324,20 +1329,32 @@ class DiscordBot:
             tz = pytz.timezone(TIMEZONE)
             current_time = datetime.now(tz)
 
+            logger.info(f"⏰ Проверка запланированных спавнов. Текущее время: {current_time.strftime('%H:%M:%S')}")
+
             # Получаем спавны для уведомления
             spawns_to_notify = db.get_spawns_for_notification()
 
+            logger.info(f"🔍 Найдено спавнов для уведомления: {len(spawns_to_notify)}")
+
             for spawn in spawns_to_notify:
                 try:
+                    logger.info(f"⚡ Обработка спавна: {spawn['boss_name']} (ID: {spawn['id']})")
+
                     # Получаем канал
                     channel = self.bot.get_channel(int(spawn['channel_id']))
                     if not channel:
-                        logger.warning(f"Канал {spawn['channel_id']} не найден для спавна {spawn['id']}")
+                        logger.warning(f"❌ Канал {spawn['channel_id']} не найден для спавна {spawn['id']}")
                         continue
 
                     # Получаем время спавна
                     spawn_time = datetime.strptime(spawn['spawn_time'], '%Y-%m-%d %H:%M:%S')
                     spawn_time = pytz.timezone(TIMEZONE).localize(spawn_time)
+
+                    # Вычисляем оставшееся время
+                    time_left = spawn_time - current_time
+                    minutes_left = int(time_left.total_seconds() / 60)
+
+                    logger.info(f"📅 Время спавна: {spawn_time.strftime('%H:%M')}, осталось минут: {minutes_left}")
 
                     # Формируем сообщение
                     spawn_time_str = spawn_time.strftime('%H:%M')
@@ -1366,7 +1383,7 @@ class DiscordBot:
                     sheets_manager.update_spawn_status(spawn['id'], 'notified')
 
                 except Exception as e:
-                    logger.error(f"Ошибка при обработке спавна {spawn.get('id')}: {e}")
+                    logger.error(f"❌ Ошибка при обработке спавна {spawn.get('id')}: {e}")
                     continue
 
         except Exception as e:

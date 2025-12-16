@@ -295,22 +295,36 @@ class GoogleSheetsManager:
             # Генерируем ID на основе текущего времени
             spawn_id = int(datetime.now().timestamp())
 
+            # Убедимся, что время спавна в правильном формате и часовом поясе
+            spawn_time = data['spawn_time']
+            if spawn_time.tzinfo is None:
+                # Если нет часового пояса, добавляем его
+                tz = pytz.timezone(TIMEZONE)
+                spawn_time = tz.localize(spawn_time)
+
+            # Вычисляем время уведомления (за 10 минут до спавна)
+            notification_time = spawn_time - timedelta(minutes=10)
+
+            logger.info(f"📝 Сохранение спавна: {data['boss_name']}")
+            logger.info(f"   Время спавна: {spawn_time.strftime('%d/%m/%Y %H:%M')}")
+            logger.info(f"   Время уведомления: {notification_time.strftime('%d/%m/%Y %H:%M')}")
+
             # Подготавливаем строку для записи
             row = [
                 spawn_id,
                 data['boss_name'],
-                data['spawn_time'].strftime('%d/%m/%Y %H:%M'),
+                spawn_time.strftime('%d/%m/%Y %H:%M'),
                 datetime.now(pytz.timezone(TIMEZONE)).strftime('%d/%m/%Y %H:%M'),
                 data['created_by'],
                 data['guild'],
                 data['channel_id'],
                 'active',  # Статус по умолчанию
-                (data['spawn_time'] - timedelta(minutes=10)).strftime('%d/%m/%Y %H:%M')
+                notification_time.strftime('%d/%m/%Y %H:%M')
             ]
 
             # Добавляем запись
             self.boss_spawn_ws.append_row(row)
-            logger.info(f"✅ Запись о спавне добавлена: {data['boss_name']} на {data['spawn_time']}")
+            logger.info(f"✅ Запись о спавне добавлена в Google Таблицу")
             return True
 
         except Exception as e:
