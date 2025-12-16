@@ -340,154 +340,6 @@ async def handle_diagnostics(message: types.Message):
     await message.answer(text, parse_mode="HTML")
 
 
-# -------------------- Test Notification --------------------
-@dp.message(Command("test_notification"))
-async def cmd_test_notification(message: types.Message):
-    """Тестовая команда для проверки уведомлений"""
-    guild = get_guild(message.from_user.id)
-    if not guild:
-        await message.answer("⚠️ Сначала выберите гильдию:", reply_markup=guild_selection_keyboard())
-        return
-
-    await message.answer("🔔 Тестовые уведомления:")
-
-    test_times = ['03:30', '07:30', '11:30', '15:30', '19:30', '23:30']
-
-    for time_key in test_times:
-        await message.answer(f"--- Тест для {time_key} ---")
-        await send_notification(bot, time_key)
-        await asyncio.sleep(1)
-
-
-# -------------------- Test Rift Notification --------------------
-@dp.message(Command("test_rift"))
-async def cmd_test_rift(message: types.Message):
-    """Тестовая команда для проверки уведомлений о разломах"""
-    await message.answer("🌀 Тестовое уведомление о разломах:")
-    await send_rift_notification(bot)
-
-@dp.message(Command("group_info"))
-async def cmd_group_info(message: types.Message):
-    """Показывает информацию о настройках групповых уведомлений"""
-    from scheduler import GROUP_CHAT_ID, GROUP_TOPIC_ID, GROUP_GUILD
-
-    text = "📢 <b>Настройки групповых уведомлений</b>\n\n"
-    text += f"<b>Чат/канал:</b> {GROUP_CHAT_ID or 'Не настроен'}\n"
-    text += f"<b>ID темы:</b> {GROUP_TOPIC_ID or 'Не настроено'}\n"
-    text += f"<b>Гильдия:</b> {GROUP_GUILD or 'Не настроена'}\n\n"
-
-    if GROUP_CHAT_ID:
-        text += "✅ Групповые уведомления активны\n"
-        text += f"📝 Бот будет отправлять уведомления для гильдии <b>{GROUP_GUILD}</b>"
-    else:
-        text += "❌ Групповые уведомления не настроены"
-
-    await message.answer(text, parse_mode="HTML")
-
-
-@dp.message(Command("test_group_notification"))
-async def cmd_test_group_notification(message: types.Message):
-    """Тестовая команда для проверки групповых уведомлений"""
-    from scheduler import send_group_notification, send_rift_notification
-
-    try:
-        await message.answer("🔔 Тестируем групповые уведомления...")
-
-        # Тест уведомления о боссах
-        await send_group_notification(bot, "11:30", ["tier1", "tier2"], False, "03.11")
-        await asyncio.sleep(1)
-
-        # Тест уведомления о разломах
-        await send_rift_notification(bot)
-
-        await message.answer("✅ Тестовые уведомления отправлены в группу/канал")
-
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-
-
-@dp.message(Command("test_discord_bosses"))
-async def cmd_test_discord_bosses(message: types.Message):
-    """Тестовая команда для отправки уведомления о боссах в Discord"""
-    try:
-        await message.answer("🔄 Отправляю тестовое уведомление о боссах в Discord...")
-
-        # Используем asyncio для запуска корутины в правильном event loop
-        success = await discord_bot.send_test_boss_notification()
-
-        if success:
-            await message.answer("✅ Тестовое уведомление о боссах отправлено в Discord!")
-        else:
-            await message.answer("❌ Не удалось отправить тестовое уведомление в Discord")
-
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-
-
-@dp.message(Command("test_discord_rift"))
-async def cmd_test_discord_rift(message: types.Message):
-    """Тестовая команда для отправки уведомления о разломах в Discord"""
-    try:
-        await message.answer("🔄 Отправляю тестовое уведомление о разломах в Discord...")
-
-        success = await discord_bot.send_test_rift_notification()
-
-        if success:
-            await message.answer("✅ Тестовое уведомление о разломах отправлено в Discord!")
-        else:
-            await message.answer("❌ Не удалось отправить тестовое уведомление в Discord")
-
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-
-
-@dp.message(Command("test_discord_tier4"))
-async def cmd_test_discord_tier4(message: types.Message):
-    """Тестовая команда для отправки уведомления о боссах 4 тира в Discord"""
-    try:
-        await message.answer("🔄 Отправляю тестовое уведомление о боссах 4 тира в Discord...")
-
-        success = await discord_bot.send_test_tier4_notification()
-
-        if success:
-            await message.answer("✅ Тестовое уведомление о боссах 4 тира отправлено в Discord!")
-        else:
-            await message.answer("❌ Не удалось отправить тестовое уведомление в Discord")
-
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-
-
-@dp.message(Command("test_discord_all"))
-async def cmd_test_discord_all(message: types.Message):
-    """Тестовая команда для отправки всех уведомлений в Discord"""
-    try:
-        await message.answer("🔄 Отправляю все тестовые уведомления в Discord...")
-
-        results = []
-
-        # Тест уведомления о боссах
-        await asyncio.sleep(1)
-        boss_success = await discord_bot.send_test_boss_notification()
-        results.append(f"Боссы: {'✅' if boss_success else '❌'}")
-
-        # Тест уведомления о разломах
-        await asyncio.sleep(1)
-        rift_success = await discord_bot.send_test_rift_notification()
-        results.append(f"Разломы: {'✅' if rift_success else '❌'}")
-
-        # Тест уведомления о Tier 4
-        await asyncio.sleep(1)
-        tier4_success = await discord_bot.send_test_tier4_notification()
-        results.append(f"Tier 4: {'✅' if tier4_success else '❌'}")
-
-        report = "📊 **Отчет по тестированию Discord:**\n\n" + "\n".join(results)
-        await message.answer(report)
-
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-
-
 @dp.message(Command("discord_status"))
 async def cmd_discord_status(message: types.Message):
     """Показывает статус Discord бота"""
@@ -517,27 +369,6 @@ async def cmd_discord_status(message: types.Message):
         await message.answer(f"❌ Ошибка: {e}")
 
 # -------------------- Debug / Admin utilities --------------------
-@dp.message(Command("debug_guild"))
-async def cmd_debug_guild(message: types.Message):
-    user_id = message.from_user.id
-    guild = get_guild(user_id)
-    tz = pytz.timezone(TIMEZONE)
-    now = datetime.now(tz)
-    schedule_key = get_schedule_key_for_date(now)
-
-    text = f"🛠 DEBUG\nUser id: {user_id}\nSaved guild: {guild}\nSlot (schedule_key): {schedule_key}\n"
-    text += f"Google Sheets доступен: {GOOGLE_SHEETS_AVAILABLE}\n\n"
-
-    if not guild:
-        text += "Гильдия не сохранена.\n"
-        await message.answer(text)
-        return
-
-    rows = get_bosses_from_sheets(guild, schedule_key)
-    text += f"Rows from Google Sheets (tier, name): {rows}\n"
-
-    await message.answer(text)
-
 
 @dp.message(Command("everyone"))
 async def cmd_everyone(message: types.Message):
@@ -682,36 +513,6 @@ async def cmd_everyone(message: types.Message):
             logger.error(f"Не удалось отправить объявление в группу: {e}")
 
 
-@dp.message(Command("force_tier4_check"))
-async def cmd_force_tier4_check(message: types.Message):
-    """Принудительно проверяет и отправляет уведомления о боссах 4 тира"""
-    from scheduler import check_and_send_tier4_alliance_notification
-
-    try:
-        await message.answer("🔍 Принудительно проверяю боссов 4 тира...")
-
-        from datetime import datetime
-        import pytz
-        today = datetime.now(pytz.timezone(TIMEZONE)).strftime('%d.%m')
-
-        await check_and_send_tier4_alliance_notification(bot, today)
-
-        await message.answer("✅ Проверка завершена. Уведомления отправлены, если найдены боссы 4 тира.")
-
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-
-
-@dp.message(Command("reset_tier4_notifications"))
-async def cmd_reset_tier4_notifications(message: types.Message):
-    """Сбрасывает флаг отправки уведомлений о Tier 4 (для тестирования)"""
-    from scheduler import tier4_notification_sent_today
-
-    global tier4_notification_sent_today
-    tier4_notification_sent_today = False
-
-    await message.answer("✅ Флаг уведомлений о Tier 4 сброшен. Следующее уведомление отправится снова.")
-
 
 @dp.message(Command("discord_servers"))
 async def cmd_discord_servers(message: types.Message):
@@ -737,31 +538,6 @@ async def cmd_discord_servers(message: types.Message):
         await message.answer(f"❌ Ошибка: {e}")
 
 
-@dp.message(Command("discord_test_all"))
-async def cmd_discord_test_all(message: types.Message):
-    """Тестовая команда для отправки всех уведомлений во все Discord серверы"""
-    try:
-        await message.answer("🔄 Отправляю тестовые уведомления во все Discord серверы...")
-
-        # Тест уведомления о боссах
-        tz = pytz.timezone(TIMEZONE)
-        now = datetime.now(tz)
-        schedule_key = now.strftime('%d.%m')
-
-        await discord_bot.send_boss_notification("15:30", ['tier1', 'tier2'], False, schedule_key)
-
-        # Тест уведомления о разломах
-        await asyncio.sleep(1)
-        await discord_bot.send_rift_notification()
-
-        # Тест уведомления о Tier 4
-        await asyncio.sleep(1)
-        await discord_bot.send_tier4_notification()
-
-        await message.answer("✅ Тестовые уведомления отправлены во все Discord серверы!")
-
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
 
 
 @dp.message(Command("discord_reset"))

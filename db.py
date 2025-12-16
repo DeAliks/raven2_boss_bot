@@ -1,26 +1,57 @@
-# db.py (полная версия)
 import sqlite3
-import logging
 from datetime import datetime
+import pytz
+import json
+from typing import List, Dict, Optional
 
-logger = logging.getLogger(__name__)
 
-DB_NAME = 'boss_bot.db'
+# Подключение к базе данных
+def get_connection():
+    """Создает подключение к базе данных"""
+    conn = sqlite3.connect('bot_database.db')
+    conn.row_factory = sqlite3.Row  # Для доступа к колонкам по имени
+    return conn
 
 
 def init_db():
-    """Инициализирует базу данных"""
-    conn = sqlite3.connect(DB_NAME)
+    """Инициализирует базу данных и создает таблицы"""
+    conn = get_connection()
     cursor = conn.cursor()
 
-    # Таблица пользователей
+    # Таблица пользователей Telegram
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            guild TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_banned INTEGER DEFAULT 0,
+            ban_reason TEXT,
+            banned_at TIMESTAMP,
+            banned_by TEXT
+        )
+    ''')
+
+    # Таблица Discord серверов
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS discord_servers (
+            guild_id TEXT PRIMARY KEY,
+            channel_id TEXT,
+            selected_guild TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Таблица Discord пользователей
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS discord_users (
             user_id TEXT PRIMARY KEY,
             username TEXT,
             guild TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_banned BOOLEAN DEFAULT FALSE,
+            is_banned INTEGER DEFAULT 0,
             ban_reason TEXT,
             banned_at TIMESTAMP,
             banned_by TEXT
@@ -31,227 +62,272 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS banned_guilds (
             guild_name TEXT PRIMARY KEY,
+            ban_reason TEXT,
             banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            banned_by TEXT,
-            ban_reason TEXT
+            banned_by TEXT
         )
     ''')
 
-    # Таблица настроек Discord серверов
+    # Таблица спавнов боссов
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS discord_settings (
-            guild_id TEXT PRIMARY KEY,
-            channel_id TEXT,
-            selected_guild TEXT,
-            is_active BOOLEAN DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS boss_spawns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            boss_name TEXT NOT NULL,
+            spawn_time TEXT NOT NULL,
+            guild TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            status TEXT DEFAULT 'active',
+            notified INTEGER DEFAULT 0,
+            notification_time TEXT
         )
     ''')
 
     conn.commit()
     conn.close()
-    logger.info("✅ База данных инициализирована")
+    print("✅ База данных инициализирована")
 
 
-def add_or_update_user(user_id: str, username: str = None, guild: str = None):
-    """Добавляет или обновляет пользователя"""
-    conn = sqlite3.connect(DB_NAME)
+def set_guild(user_id: int, guild: str):
+    """Устанавливает гильдию для пользователя"""
+    conn = get_connection()
     cursor = conn.cursor()
 
-    if username is None:
-        cursor.execute('''
-            INSERT OR REPLACE INTO users (user_id, guild, created_at)
-            VALUES (?, ?, ?)
-        ''', (user_id, guild, datetime.now()))
-    else:
-        cursor.execute('''
-            INSERT OR REPLACE INTO users (user_id, username, guild, created_at)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, username, guild, datetime.now()))
+    cursor.execute('''
+        INSERT OR REPLACE INTO users (user_id, guild, created_at)
+        VALUES (?, ?, datetime('now'))
+    ''', (user_id, guild))
 
     conn.commit()
     conn.close()
 
 
-def get_user(user_id: str):
-    """Получает информацию о пользователе"""
-    conn = sqlite3.connect(DB_NAME)
+def get_guild(user_id: int) -> Optional[str]:
+    """Получает гильдию пользователя"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT guild FROM users WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    return result['guild'] if result else None
+
+
+def get_all_users() -> List[Dict]:
+    """Получает всех пользователей"""
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT user_id, username, guild, created_at, is_banned, ban_reason, banned_at, banned_by
-        FROM users WHERE user_id = ?
-    ''', (user_id,))
+        SELECT user_id, username, guild, created_at, is_banned, ban_reason 
+        FROM users 
+        ORDER BY created_at DESC
+    ''')
+
+    users = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return users
+
+
+# Discord функции
+def set_discord_guild(guild_id: str, channel_id: str, selected_guild: str):
+    """Сохраняет настройки Discord сервера"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT OR REPLACE INTO discord_servers 
+        (guild_id, channel_id, selected_guild, updated_at, is_active)
+        VALUES (?, ?, ?, datetime('now'), 1)
+    ''', (guild_id, channel_id, selected_guild))
+
+    conn.commit()
+    conn.close()
+
+
+def get_discord_guild(guild_id: str) -> Optional[Dict]:
+    """Получает настройки Discord сервера"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT guild_id, channel_id, selected_guild, is_active
+        FROM discord_servers 
+        WHERE guild_id = ? AND is_active = 1
+    ''', (guild_id,))
 
     result = cursor.fetchone()
     conn.close()
 
-    if result:
-        return {
-            'user_id': result[0],
-            'username': result[1],
-            'guild': result[2],
-            'created_at': result[3],
-            'is_banned': bool(result[4]),
-            'ban_reason': result[5],
-            'banned_at': result[6],
-            'banned_by': result[7]
-        }
-    return None
+    return dict(result) if result else None
 
 
-def get_all_users():
-    """Получает всех пользователей"""
-    conn = sqlite3.connect(DB_NAME)
+def get_all_active_discord_servers() -> List[Dict]:
+    """Получает все активные Discord серверы"""
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT user_id, username, guild, created_at, is_banned, ban_reason
-        FROM users ORDER BY created_at DESC
+        SELECT guild_id, channel_id, selected_guild
+        FROM discord_servers 
+        WHERE is_active = 1
     ''')
 
-    users = []
-    for row in cursor.fetchall():
-        users.append({
-            'user_id': row[0],
-            'username': row[1],
-            'guild': row[2],
-            'created_at': row[3],
-            'is_banned': bool(row[4]),
-            'ban_reason': row[5]
-        })
-
+    servers = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return users
+
+    return servers
 
 
-def ban_user(user_id: str, ban_reason: str, banned_by: str):
-    """Банит пользователя"""
-    conn = sqlite3.connect(DB_NAME)
+def deactivate_discord_server(guild_id: str):
+    """Деактивирует Discord сервер"""
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('''
-        UPDATE users 
-        SET is_banned = TRUE, ban_reason = ?, banned_at = ?, banned_by = ?
-        WHERE user_id = ?
-    ''', (ban_reason, datetime.now(), banned_by, user_id))
+        UPDATE discord_servers 
+        SET is_active = 0, updated_at = datetime('now')
+        WHERE guild_id = ?
+    ''', (guild_id,))
 
     conn.commit()
     conn.close()
-    logger.info(f"✅ Пользователь {user_id} забанен. Причина: {ban_reason}")
+
+
+# Функции для управления пользователями
+def add_or_update_user(user_id: str, username: str):
+    """Добавляет или обновляет пользователя Discord"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT OR REPLACE INTO discord_users (user_id, username, created_at)
+        VALUES (?, ?, datetime('now'))
+    ''', (user_id, username))
+
+    conn.commit()
+    conn.close()
+
+
+def get_user(user_id: str) -> Optional[Dict]:
+    """Получает информацию о пользователе Discord"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT * FROM discord_users WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    return dict(result) if result else None
+
+
+def ban_user(user_id: str, reason: str, banned_by: str):
+    """Банит пользователя"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        UPDATE discord_users 
+        SET is_banned = 1, ban_reason = ?, banned_at = datetime('now'), banned_by = ?
+        WHERE user_id = ?
+    ''', (reason, banned_by, user_id))
+
+    conn.commit()
+    conn.close()
 
 
 def unban_user(user_id: str):
     """Разбанивает пользователя"""
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('''
-        UPDATE users 
-        SET is_banned = FALSE, ban_reason = NULL, banned_at = NULL, banned_by = NULL
+        UPDATE discord_users 
+        SET is_banned = 0, ban_reason = NULL, banned_at = NULL, banned_by = NULL
         WHERE user_id = ?
     ''', (user_id,))
 
     conn.commit()
     conn.close()
-    logger.info(f"✅ Пользователь {user_id} разбанен")
 
 
-def ban_guild(guild_name: str, ban_reason: str, banned_by: str):
+def ban_guild(guild_name: str, reason: str, banned_by: str):
     """Банит гильдию"""
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('''
-        INSERT OR REPLACE INTO banned_guilds (guild_name, banned_by, ban_reason)
-        VALUES (?, ?, ?)
-    ''', (guild_name, banned_by, ban_reason))
+        INSERT OR REPLACE INTO banned_guilds (guild_name, ban_reason, banned_by, banned_at)
+        VALUES (?, ?, ?, datetime('now'))
+    ''', (guild_name, reason, banned_by))
 
     conn.commit()
     conn.close()
-    logger.info(f"✅ Гильдия {guild_name} забанена. Причина: {ban_reason}")
 
 
 def unban_guild(guild_name: str):
     """Разбанивает гильдию"""
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('DELETE FROM banned_guilds WHERE guild_name = ?', (guild_name,))
-
     conn.commit()
     conn.close()
-    logger.info(f"✅ Гильдия {guild_name} разбанена")
 
 
-def get_banned_guilds():
-    """Получает список забаненных гильдий"""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT guild_name, banned_by, ban_reason, banned_at FROM banned_guilds')
-
-    guilds = []
-    for row in cursor.fetchall():
-        guilds.append({
-            'guild_name': row[0],
-            'banned_by': row[1],
-            'ban_reason': row[2],
-            'banned_at': row[3]
-        })
-
-    conn.close()
-    return guilds
-
-
-def is_guild_banned(guild_name: str):
+def is_guild_banned(guild_name: str) -> bool:
     """Проверяет, забанена ли гильдия"""
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('SELECT 1 FROM banned_guilds WHERE guild_name = ?', (guild_name,))
-    result = cursor.fetchone() is not None
-
+    result = cursor.fetchone()
     conn.close()
-    return result
+
+    return bool(result)
 
 
-def set_guild(user_id: str, guild: str):
-    """Устанавливает гильдию для пользователя"""
-    add_or_update_user(user_id, guild=guild)
-
-
-def get_guild(user_id: str):
-    """Получает гильдию пользователя"""
-    user = get_user(user_id)
-    return user['guild'] if user else None
-
-
-def get_user_stats():
-    """Получает статистику пользователей"""
-    conn = sqlite3.connect(DB_NAME)
+def get_banned_guilds() -> List[Dict]:
+    """Получает список забаненных гильдий"""
+    conn = get_connection()
     cursor = conn.cursor()
 
-    # Общее количество пользователей
-    cursor.execute('SELECT COUNT(*) FROM users')
-    total_users = cursor.fetchone()[0]
+    cursor.execute('SELECT * FROM banned_guilds ORDER BY banned_at DESC')
+    guilds = [dict(row) for row in cursor.fetchall()]
+    conn.close()
 
-    # Забаненные пользователи
-    cursor.execute('SELECT COUNT(*) FROM users WHERE is_banned = TRUE')
-    banned_users = cursor.fetchone()[0]
+    return guilds
 
-    # Активные пользователи
-    active_users = total_users - banned_users
+
+def get_user_stats() -> Dict:
+    """Получает статистику пользователей"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Общая статистика
+    cursor.execute('SELECT COUNT(*) as total FROM users')
+    total_users = cursor.fetchone()['total']
+
+    cursor.execute('SELECT COUNT(*) as active FROM users WHERE is_banned = 0')
+    active_users = cursor.fetchone()['active']
+
+    cursor.execute('SELECT COUNT(*) as banned FROM users WHERE is_banned = 1')
+    banned_users = cursor.fetchone()['banned']
 
     # Распределение по гильдиям
     cursor.execute('''
         SELECT guild, COUNT(*) as count 
         FROM users 
-        WHERE is_banned = FALSE AND guild IS NOT NULL
+        WHERE guild IS NOT NULL 
         GROUP BY guild
     ''')
-    guild_distribution = {row[0]: row[1] for row in cursor.fetchall()}
+
+    guild_distribution = {}
+    for row in cursor.fetchall():
+        guild_distribution[row['guild']] = row['count']
 
     conn.close()
 
@@ -263,74 +339,165 @@ def get_user_stats():
     }
 
 
-# Функции для Discord настроек
-
-def set_discord_guild(guild_id, channel_id, selected_guild):
-    """Устанавливает гильдию для Discord сервера"""
-    conn = sqlite3.connect(DB_NAME)
+def get_all_discord_users() -> List[Dict]:
+    """Получает всех пользователей Discord"""
+    conn = get_connection()
     cursor = conn.cursor()
+
+    cursor.execute('SELECT * FROM discord_users ORDER BY created_at DESC')
+    users = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return users
+
+
+def get_all_active_discord_users() -> List[Dict]:
+    """Получает всех активных пользователей Discord"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT * FROM discord_users WHERE is_banned = 0 ORDER BY created_at DESC')
+    users = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return users
+
+
+# Функции для спавнов боссов
+def add_spawn_notification(boss_name: str, spawn_time: datetime, guild: str,
+                           channel_id: str, created_by: str) -> int:
+    """Добавляет запись о спавне босса в базу данных"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Добавляем запись
+    created_at = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S')
+    spawn_time_str = spawn_time.strftime('%Y-%m-%d %H:%M:%S')
+    notification_time = (spawn_time - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
+
     cursor.execute('''
-        INSERT OR REPLACE INTO discord_settings 
-        (guild_id, channel_id, selected_guild, is_active, updated_at)
-        VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
-    ''', (guild_id, channel_id, selected_guild))
+        INSERT INTO boss_spawns 
+        (boss_name, spawn_time, guild, channel_id, created_by, created_at, notification_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (boss_name, spawn_time_str, guild, channel_id, created_by, created_at, notification_time))
+
+    spawn_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return spawn_id
+
+
+def get_active_spawns() -> List[Dict]:
+    """Получает активные спавны боссов"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    current_time = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S')
+
+    cursor.execute('''
+        SELECT * FROM boss_spawns 
+        WHERE status = 'active' 
+        AND spawn_time > ?
+        ORDER BY spawn_time
+    ''', (current_time,))
+
+    spawns = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return spawns
+
+
+def get_active_spawns_by_channel(channel_id: str) -> List[Dict]:
+    """Получает активные спавны боссов для конкретного канала"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    current_time = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S')
+
+    cursor.execute('''
+        SELECT * FROM boss_spawns 
+        WHERE status = 'active' 
+        AND spawn_time > ?
+        AND channel_id = ?
+        ORDER BY spawn_time
+    ''', (current_time, channel_id))
+
+    spawns = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return spawns
+
+
+def update_spawn_status(spawn_id: int, status: str):
+    """Обновляет статус спавна"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        UPDATE boss_spawns 
+        SET status = ? 
+        WHERE id = ?
+    ''', (status, spawn_id))
+
     conn.commit()
     conn.close()
 
 
-def get_discord_guild(guild_id):
-    """Получает настройки для Discord сервера"""
-    conn = sqlite3.connect(DB_NAME)
+def mark_spawn_notified(spawn_id: int):
+    """Отмечает спавн как уведомленный"""
+    conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute('''
-        SELECT * FROM discord_settings 
-        WHERE guild_id = ? AND is_active = 1
-    ''', (guild_id,))
-    result = cursor.fetchone()
-    conn.close()
+        UPDATE boss_spawns 
+        SET notified = 1 
+        WHERE id = ?
+    ''', (spawn_id,))
 
-    if result:
-        return {
-            'guild_id': result[0],
-            'channel_id': result[1],
-            'selected_guild': result[2],
-            'is_active': bool(result[3]),
-            'created_at': result[4],
-            'updated_at': result[5]
-        }
-    return None
-
-
-def get_all_active_discord_servers():
-    """Получает все активные Discord серверы"""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT guild_id, channel_id, selected_guild 
-        FROM discord_settings 
-        WHERE is_active = 1
-    ''')
-    results = cursor.fetchall()
-    conn.close()
-
-    servers = []
-    for row in results:
-        servers.append({
-            'guild_id': row[0],
-            'channel_id': row[1],
-            'selected_guild': row[2]
-        })
-    return servers
-
-
-def deactivate_discord_server(guild_id):
-    """Деактивирует сервер"""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE discord_settings 
-        SET is_active = 0 
-        WHERE guild_id = ?
-    ''', (guild_id,))
     conn.commit()
     conn.close()
+
+
+def get_spawns_for_notification() -> List[Dict]:
+    """Получает спавны, для которых нужно отправить уведомление"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    current_time = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S')
+
+    cursor.execute('''
+        SELECT * FROM boss_spawns 
+        WHERE status = 'active' 
+        AND notification_time <= ?
+        AND spawn_time > ?
+        AND notified = 0
+        ORDER BY spawn_time
+    ''', (current_time, current_time))
+
+    spawns = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return spawns
+
+
+def delete_old_spawns(days: int = 7):
+    """Удаляет старые спавны"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cutoff_date = (datetime.now(pytz.timezone('Europe/Moscow')) - timedelta(days=days)).strftime('%Y-%m-%d')
+
+    cursor.execute('''
+        DELETE FROM boss_spawns 
+        WHERE date(spawn_time) < ?
+    ''', (cutoff_date,))
+
+    deleted_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    return deleted_count
+
+
+from datetime import timedelta

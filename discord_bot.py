@@ -1,23 +1,175 @@
-# discord_bot.py (универсальная версия с новой гильдией)
 import discord
 from discord.ext import tasks, commands
-import asyncio
-from datetime import datetime
+from discord.ui import Select, View, Modal, TextInput
+from datetime import datetime, timedelta
 import pytz
 import random
-from config import DISCORD_BOT_TOKEN, TIMEZONE
-from google_sheets_manager import sheets_manager
 import logging
+import asyncio
+from config import DISCORD_BOT_TOKEN, TIMEZONE, DISCORD_ROLE_ID
+from google_sheets_manager import sheets_manager
 import db
 
 # Настройка логирования
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # ID администратора (ваш ID)
 ADMIN_USER_ID = 7774897924
 
-# Поддерживаемые гильдии (теперь с RussianTeam)
+# Поддерживаемые гильдии
 SUPPORTED_GUILDS = ["All", "DarkSyndicate", "Mercia", "HryKings", "RussianTeam"]
+
+
+class TimeInputModal(Modal):
+    """Модальное окно для ввода времени"""
+
+    def __init__(self, boss_name: str, guild_name: str):
+        super().__init__(title=f"Время до появления: {boss_name}")
+        self.boss_name = boss_name
+        self.guild_name = guild_name
+
+        self.hours = TextInput(
+            label="Часы",
+            placeholder="0-23",
+            default="0",
+            max_length=2,
+            required=True
+        )
+
+        self.minutes = TextInput(
+            label="Минуты",
+            placeholder="0-59",
+            default="0",
+            max_length=2,
+            required=True
+        )
+
+        self.add_item(self.hours)
+        self.add_item(self.minutes)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            hours = int(self.hours.value)
+            minutes = int(self.minutes.value)
+
+            if hours < 0 or hours > 23:
+                await interaction.response.send_message(
+                    "❌ Часы должны быть в диапазоне 0-23",
+                    ephemeral=True
+                )
+                return
+
+            if minutes < 0 or minutes > 59:
+                await interaction.response.send_message(
+                    "❌ Минуты должны быть в диапазоне 0-59",
+                    ephemeral=True
+                )
+                return
+
+            # Вычисляем время появления
+            tz = pytz.timezone(TIMEZONE)
+            current_time = datetime.now(tz)
+            spawn_time = current_time + timedelta(hours=hours, minutes=minutes)
+            notification_time = spawn_time - timedelta(minutes=10)
+
+            # Создаем запись для сохранения
+            spawn_data = {
+                'boss_name': self.boss_name,
+                'spawn_time': spawn_time,
+                'created_by': str(interaction.user.id),
+                'guild': self.guild_name,
+                'channel_id': str(interaction.channel_id)
+            }
+
+            # Сохраняем в Google Таблицу
+            if sheets_manager.add_boss_spawn(spawn_data):
+                # Сохраняем в локальную базу
+                spawn_id = db.add_spawn_notification(
+                    boss_name=self.boss_name,
+                    spawn_time=spawn_time,
+                    guild=self.guild_name,
+                    channel_id=str(interaction.channel_id),
+                    created_by=str(interaction.user.id)
+                )
+
+                # Отправляем подтверждение
+                spawn_time_str = spawn_time.strftime('%d/%m/%Y %H:%M')
+                notification_time_str = notification_time.strftime('%H:%M')
+
+                # Форматируем время до спавна
+                time_until = ""
+                if hours > 0:
+                    time_until += f"{hours}ч "
+                if minutes > 0:
+                    time_until += f"{minutes}мин"
+
+                embed = discord.Embed(
+                    title="✅ Спавн установлен!",
+                    description=(
+                        f"**Босс:** {self.boss_name}\n"
+                        f"**Время до появления:** {time_until}\n"
+                        f"**Время появления:** {spawn_time_str}\n"
+                        f"**Гильдия:** {self.guild_name}\n"
+                        f"**Уведомление:** за 10 минут ({notification_time_str})\n"
+                        f"**ID записи:** {spawn_id}"
+                    ),
+                    color=0x00ff00
+                )
+
+                embed.set_footer(text=f"Установлено: {interaction.user.display_name}")
+
+                await interaction.response.send_message(embed=embed)
+
+                # Запускаем задачу для уведомления (опционально)
+                # asyncio.create_task(
+                #     schedule_boss_notification(
+                #         self.boss_name,
+                #         spawn_time,
+                #         self.guild_name,
+                #         interaction.channel_id
+                #     )
+                # )
+            else:
+                await interaction.response.send_message(
+                    "❌ Ошибка при сохранении в Google Таблицу",
+                    ephemeral=True
+                )
+
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ Пожалуйста, введите числа для часов и минут",
+                ephemeral=True
+            )
+
+
+class BossSelectView(View):
+    """View для выбора босса"""
+
+    def __init__(self, boss_list: list, guild_name: str):
+        super().__init__(timeout=60)
+        self.boss_list = boss_list
+        self.guild_name = guild_name
+
+        # Создаем выпадающий список
+        select = Select(
+            placeholder="Выберите босса...",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(label=boss, value=boss)
+                for boss in boss_list
+            ]
+        )
+        select.callback = self.select_callback
+        self.add_item(select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        selected_boss = interaction.data['values'][0]
+
+        # Открываем модальное окно для ввода времени
+        modal = TimeInputModal(selected_boss, self.guild_name)
+        await interaction.response.send_modal(modal)
 
 
 class DiscordBot:
@@ -30,6 +182,9 @@ class DiscordBot:
         # Используем префикс '!' для текстовых команд
         self.bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
         self.setup_handlers()
+
+        # Запускаем задачу проверки спавнов при старте
+        self.check_scheduled_spawns.start()
 
     def setup_handlers(self):
         @self.bot.event
@@ -115,6 +270,151 @@ class DiscordBot:
             except Exception as e:
                 logger.error(f"❌ Ошибка в команде start_boss_alert: {e}")
                 await ctx.send("❌ Произошла ошибка при настройке уведомлений")
+
+        # НОВАЯ КОМАНДА: spawn
+        @self.bot.command(name="spawn")
+        async def spawn_command(ctx):
+            """Устанавливает время до появления босса 4 тира"""
+            try:
+                # Получаем настройки сервера
+                guild_id = str(ctx.guild.id)
+                settings = db.get_discord_guild(guild_id)
+
+                guild_name = "DarkSyndicate"  # Значение по умолчанию
+                if settings:
+                    guild_name = settings['selected_guild']
+
+                # Получаем список боссов 4 тира
+                boss_list = sheets_manager.get_tier4_bosses()
+
+                if not boss_list:
+                    await ctx.send(
+                        "❌ На сегодня нет боссов 4 тира в расписании.\n"
+                        "Пожалуйста, проверьте расписание или добавьте боссов в Google Таблицу."
+                    )
+                    return
+
+                # Создаем embed с инструкцией
+                embed = discord.Embed(
+                    title="🎯 Установка спавна босса",
+                    description=(
+                        "Выберите босса 4 тира из списка ниже.\n"
+                        "После выбора откроется окно для указания времени до появления."
+                    ),
+                    color=0x0099ff
+                )
+
+                embed.add_field(
+                    name="📋 Доступные боссы:",
+                    value="\n".join([f"• {boss}" for boss in boss_list]),
+                    inline=False
+                )
+
+                embed.add_field(
+                    name="ℹ️ Как это работает:",
+                    value=(
+                        "1. Выберите босса из списка\n"
+                        "2. Укажите время до его появления (часы и минуты)\n"
+                        "3. Бот уведомит гильдию за 10 минут до появления\n"
+                        "4. Данные сохраняются в Google Таблицу"
+                    ),
+                    inline=False
+                )
+
+                embed.set_footer(text=f"Гильдия: {guild_name}")
+
+                # Создаем View с выбором босса
+                view = BossSelectView(boss_list, guild_name)
+                await ctx.send(embed=embed, view=view)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде spawn: {e}")
+                await ctx.send("❌ Произошла ошибка при установке спавна")
+
+        # Команда для просмотра активных спавнов
+        @self.bot.command(name="spawn_list")
+        async def spawn_list_command(ctx):
+            """Показывает активные спавны боссов"""
+            try:
+                # Получаем спавны для текущего канала
+                channel_spawns = db.get_active_spawns_by_channel(str(ctx.channel.id))
+
+                if not channel_spawns:
+                    await ctx.send("📭 Нет активных спавнов боссов в этом канале")
+                    return
+
+                # Создаем embed со списком спавнов
+                embed = discord.Embed(
+                    title="📅 Активные спавны боссов",
+                    description=f"Всего активных спавнов: {len(channel_spawns)}",
+                    color=0xff9900
+                )
+
+                for spawn in channel_spawns:
+                    try:
+                        spawn_time = datetime.strptime(spawn['spawn_time'], '%Y-%m-%d %H:%M:%S')
+                        spawn_time = pytz.timezone(TIMEZONE).localize(spawn_time)
+
+                        current_time = datetime.now(pytz.timezone(TIMEZONE))
+                        time_until = spawn_time - current_time
+
+                        hours = int(time_until.total_seconds() // 3600)
+                        minutes = int((time_until.total_seconds() % 3600) // 60)
+
+                        time_until_str = ""
+                        if hours > 0:
+                            time_until_str += f"{hours}ч "
+                        if minutes > 0:
+                            time_until_str += f"{minutes}мин"
+
+                        spawn_time_str = spawn_time.strftime('%d/%m %H:%M')
+
+                        embed.add_field(
+                            name=f"⚔️ {spawn['boss_name']} (ID: {spawn['id']})",
+                            value=(
+                                f"**Осталось:** {time_until_str}\n"
+                                f"**Появление:** {spawn_time_str}\n"
+                                f"**Гильдия:** {spawn['guild']}\n"
+                                f"**Статус:** {spawn['status']}"
+                            ),
+                            inline=False
+                        )
+                    except Exception as e:
+                        logger.error(f"Ошибка при форматировании спавна: {e}")
+                        continue
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде spawn_list: {e}")
+                await ctx.send("❌ Произошла ошибка при получении списка спавнов")
+
+        # Команда для отмены спавна
+        @self.bot.command(name="spawn_cancel")
+        async def spawn_cancel_command(ctx, spawn_id: str = None):
+            """Отменяет спавн босса"""
+            try:
+                if not spawn_id:
+                    await ctx.send(
+                        "❌ Укажите ID спавна для отмены\n"
+                        "Использование: `!spawn_cancel <ID>`\n"
+                        "ID можно получить из команды `!spawn_list`"
+                    )
+                    return
+
+                # Пытаемся обновить статус в базе данных
+                db.update_spawn_status(int(spawn_id), 'cancelled')
+
+                # Также обновляем в Google Таблице
+                sheets_manager.update_spawn_status(int(spawn_id), 'cancelled')
+
+                await ctx.send(f"✅ Спавн с ID {spawn_id} отменен")
+
+            except ValueError:
+                await ctx.send("❌ Неверный формат ID. ID должен быть числом")
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде spawn_cancel: {e}")
+                await ctx.send("❌ Произошла ошибка при отмене спавна")
 
         @self.bot.command(name="stop_boss_alert")
         async def stop_boss_alert(ctx):
@@ -522,12 +822,17 @@ class DiscordBot:
 `!boss_status` - статус уведомлений
 `!today_bosses [гильдия]` - боссы на сегодня
 
+**🎯 Установка спавнов боссов:**
+
+`!spawn` - установить время до появления босса 4 тира
+`!spawn_list` - показать активные спавны
+`!spawn_cancel <ID>` - отменить спавн
+
 **🎲 Случайный выбор:**
 
 `!random <данные>` - случайный выбор
 • `!random 1-10` - случайное число от 1 до 10
 • `!random 7` - случайное число от 1 до 7
-• Многострочный ввод для списка:!random Ника
 
 **🤖 Автоматические уведомления:**
 Бот автоматически отправляет уведомления о боссах и разломах за 10 минут до их появления.
@@ -724,7 +1029,9 @@ class DiscordBot:
                             continue
 
                         # Формируем сообщение
-                        message = f"@everyone\n"
+                        # Используем роль Raven2 для упоминания
+                        role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID else "@everyone"
+                        message = f"{role_mention}\n"
                         message += f"⏰ **Через 10 минут ({time_key}) появятся боссы:**\n"
                         message += f"**Гильдия:** {selected_guild}\n"
                         message += f"**Слот:** {schedule_key}\n\n"
@@ -778,9 +1085,12 @@ class DiscordBot:
             if not active_servers:
                 return
 
+            # Используем роль Raven2 для упоминания
+            role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID else "@everyone"
+
             message = (
                 "🌀 **РАЗЛОМЫ СКОРО ПОЯВЯТСЯ!** 🌀\n\n"
-                f"@everyone\n"
+                f"{role_mention}\n"
                 "⏰ Через 10 минут откроются разломы\n"
                 "⚔️ Готовьтесь к битве!\n\n"
                 "💎 Не пропустите возможность получить ценные награды!"
@@ -852,8 +1162,12 @@ class DiscordBot:
                     # Формируем сообщение
                     boss_list = "\n".join([f"• {boss} (**гильдия {guild}**)" for guild, boss in bosses_to_show])
 
+                    # Используем роль Raven2 для упоминания
+                    role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID else "@everyone"
+
                     message = (
                         "🔔 **ВНИМАНИЕ АЛЬЯНС!** 🔔\n\n"
+                        f"{role_mention}\n"
                         f"Обратите внимание! Сегодня есть боссы **Тира 4**:\n\n"
                         f"{boss_list}\n\n"
                         f"⚔️ **Не пропустите возможность помочь нашим гильдиям!** ⚔️"
@@ -868,76 +1182,6 @@ class DiscordBot:
 
         except Exception as e:
             logger.error(f"❌ Общая ошибка в send_tier4_notification: {e}")
-
-    async def send_test_boss_notification(self):
-        """Отправляет тестовое уведомление о боссах в Discord"""
-        try:
-            # Получаем текущие данные
-            tz = pytz.timezone(TIMEZONE)
-            now = datetime.now(tz)
-            schedule_key = now.strftime('%d.%m')
-
-            # Используем ближайшее время для теста
-            time_key = "15:30"
-            target_tiers = ['tier1', 'tier2']
-            is_free_farm = False
-
-            await self.send_boss_notification(time_key, target_tiers, is_free_farm, schedule_key)
-            return True
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки тестового уведомления о боссах: {e}")
-            return False
-
-    async def send_test_rift_notification(self):
-        """Отправляет тестовое уведомление о разломах в Discord"""
-        try:
-            await self.send_rift_notification()
-            return True
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки тестового уведомления о разломах: {e}")
-            return False
-
-    async def send_test_tier4_notification(self):
-        """Отправляет тестовое уведомление о боссах 4 тира в Discord"""
-        try:
-            # Тестовые данные для боссов 4 тира
-            test_bosses = [("Mercia", "Двуликий Моргон"), ("DarkSyndicate", "Марионетка Нидрок"),
-                           ("RussianTeam", "Древний дракон Истерия")]
-
-            # Отправляем в активные серверы
-            active_servers = db.get_all_active_discord_servers()
-            for server in active_servers:
-                guild_id = server['guild_id']
-                channel_id = server['channel_id']
-
-                try:
-                    guild = self.bot.get_guild(int(guild_id))
-                    if not guild:
-                        continue
-
-                    channel = guild.get_channel(int(channel_id))
-                    if not channel:
-                        continue
-
-                    boss_list = "\n".join([f"• {boss} (**гильдия {guild}**)" for guild, boss in test_bosses])
-                    message = (
-                        "🔔 **ТЕСТ: ВНИМАНИЕ АЛЬЯНС!** 🔔\n\n"
-                        f"Тестовое уведомление о боссах **Тира 4**:\n\n"
-                        f"{boss_list}\n\n"
-                        f"⚔️ **Тестовое уведомление!** ⚔️"
-                    )
-
-                    await channel.send(message)
-
-                except Exception as e:
-                    logger.error(f"❌ Ошибка отправки тестового уведомления о Tier 4: {e}")
-                    continue
-
-            return True
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки тестового уведомления о Tier 4: {e}")
-            return False
 
     @tasks.loop(minutes=1)
     async def check_bosses(self):
@@ -984,6 +1228,65 @@ class DiscordBot:
 
     @check_bosses.before_loop
     async def before_check_bosses(self):
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(seconds=30)
+    async def check_scheduled_spawns(self):
+        """Проверяет запланированные спавны и отправляет уведомления"""
+        try:
+            tz = pytz.timezone(TIMEZONE)
+            current_time = datetime.now(tz)
+
+            # Получаем спавны для уведомления
+            spawns_to_notify = db.get_spawns_for_notification()
+
+            for spawn in spawns_to_notify:
+                try:
+                    # Получаем канал
+                    channel = self.bot.get_channel(int(spawn['channel_id']))
+                    if not channel:
+                        logger.warning(f"Канал {spawn['channel_id']} не найден для спавна {spawn['id']}")
+                        continue
+
+                    # Получаем время спавна
+                    spawn_time = datetime.strptime(spawn['spawn_time'], '%Y-%m-%d %H:%M:%S')
+                    spawn_time = pytz.timezone(TIMEZONE).localize(spawn_time)
+
+                    # Формируем сообщение
+                    spawn_time_str = spawn_time.strftime('%H:%M')
+
+                    # Используем роль Raven2 для упоминания
+                    role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID else "@everyone"
+
+                    message = (
+                        f"{role_mention}\n"
+                        f"⚔️ **ВНИМАНИЕ! СПАВН БОССА!** ⚔️\n\n"
+                        f"Через 10 минут ({spawn_time_str}) появится босс:\n"
+                        f"**{spawn['boss_name']}**\n"
+                        f"Гильдия: **{spawn['guild']}**\n\n"
+                        f"💀 Готовьтесь к битве! 💀\n"
+                        f"*(спавн установлен пользователем)*"
+                    )
+
+                    # Отправляем сообщение
+                    await channel.send(message)
+                    logger.info(f"✅ Уведомление о спавне отправлено: {spawn['boss_name']} в {spawn_time_str}")
+
+                    # Отмечаем как уведомленный
+                    db.mark_spawn_notified(spawn['id'])
+
+                    # Обновляем статус в Google Таблице
+                    sheets_manager.update_spawn_status(spawn['id'], 'notified')
+
+                except Exception as e:
+                    logger.error(f"Ошибка при обработке спавна {spawn.get('id')}: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка в check_scheduled_spawns: {e}")
+
+    @check_scheduled_spawns.before_loop
+    async def before_check_scheduled_spawns(self):
         await self.bot.wait_until_ready()
 
     def run(self):

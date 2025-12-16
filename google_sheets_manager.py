@@ -1,12 +1,11 @@
-# google_sheets_manager.py (обновленная для новой структуры)
 import gspread
 from cachetools import cached, TTLCache
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import logging
 import re
 from config import SpreadSheet_URL
-
+from typing import List, Dict, Optional
 
 # Настройки
 TIMEZONE = 'Europe/Moscow'
@@ -25,20 +24,56 @@ class GoogleSheetsManager:
         self.connected = False
         self.gc = None
         self.spreadsheet = None
+        self.boss_spawn_ws = None
 
         try:
             self.gc = gspread.service_account(filename=credentials_file)
-
-            # URL вашей таблицы
             spreadsheet_url = SpreadSheet_URL
             self.spreadsheet = self.gc.open_by_url(spreadsheet_url)
             self.connected = True
             logger.info("✅ Успешное подключение к Google Таблице")
 
+            # Инициализируем лист для спавнов боссов
+            self._init_boss_spawn_sheet()
+
         except Exception as e:
             logger.error(f"❌ Ошибка подключения к Google Таблице: {e}")
             self.connected = False
 
+    def _init_boss_spawn_sheet(self):
+        """Инициализирует лист для спавнов боссов"""
+        try:
+            # Пытаемся получить существующий лист
+            self.boss_spawn_ws = self.spreadsheet.worksheet("BossSpawn")
+            logger.info("✅ Лист BossSpawn найден")
+        except gspread.exceptions.WorksheetNotFound:
+            try:
+                # Создаем новый лист
+                self.boss_spawn_ws = self.spreadsheet.add_worksheet(
+                    title="BossSpawn",
+                    rows=100,
+                    cols=9
+                )
+
+                # Добавляем заголовки
+                headers = [
+                    "ID",
+                    "BossName",
+                    "SpawnTime",
+                    "CreatedAt",
+                    "CreatedBy",
+                    "Guild",
+                    "ChannelID",
+                    "Status",
+                    "NotificationTime"
+                ]
+                self.boss_spawn_ws.append_row(headers)
+                logger.info("✅ Создан новый лист BossSpawn с заголовками")
+            except Exception as e:
+                logger.error(f"❌ Ошибка создания листа BossSpawn: {e}")
+                self.boss_spawn_ws = None
+
+    # Существующие методы остаются без изменений...
     @cached(cache)
     def get_today_bosses(self):
         """Получает данные о боссах на сегодня из Google Таблицы с кэшированием."""
@@ -248,6 +283,113 @@ class GoogleSheetsManager:
         """Очищает кэш для принудительного обновления данных."""
         cache.clear()
         logger.info("🗑️ Кэш очищен")
+
+    # Новые методы для работы со спавнами боссов
+    def add_boss_spawn(self, data: Dict) -> bool:
+        """Добавляет запись о спавне босса в таблицу"""
+        try:
+            if not self.boss_spawn_ws:
+                logger.error("❌ Лист BossSpawn не инициализирован")
+                return False
+
+            # Генерируем ID на основе текущего времени
+            spawn_id = int(datetime.now().timestamp())
+
+            # Подготавливаем строку для записи
+            row = [
+                spawn_id,
+                data['boss_name'],
+                data['spawn_time'].strftime('%d/%m/%Y %H:%M'),
+                datetime.now(pytz.timezone(TIMEZONE)).strftime('%d/%m/%Y %H:%M'),
+                data['created_by'],
+                data['guild'],
+                data['channel_id'],
+                'active',  # Статус по умолчанию
+                (data['spawn_time'] - timedelta(minutes=10)).strftime('%d/%m/%Y %H:%M')
+            ]
+
+            # Добавляем запись
+            self.boss_spawn_ws.append_row(row)
+            logger.info(f"✅ Запись о спавне добавлена: {data['boss_name']} на {data['spawn_time']}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при добавлении спавна: {e}")
+            return False
+
+    def get_active_boss_spawns(self) -> List[Dict]:
+        """Получает активные спавны боссов"""
+        try:
+            if not self.boss_spawn_ws:
+                return []
+
+            records = self.boss_spawn_ws.get_all_records()
+            active_spawns = []
+            current_time = datetime.now(pytz.timezone(TIMEZONE))
+
+            for record in records:
+                try:
+                    spawn_time = datetime.strptime(record['SpawnTime'], '%d/%m/%Y %H:%M')
+                    spawn_time = pytz.timezone(TIMEZONE).localize(spawn_time)
+
+                    # Проверяем, что спавн активен и время еще не наступило
+                    if record['Status'] == 'active' and spawn_time > current_time:
+                        active_spawns.append({
+                            'id': record['ID'],
+                            'boss_name': record['BossName'],
+                            'spawn_time': spawn_time,
+                            'guild': record['Guild'],
+                            'channel_id': record['ChannelID'],
+                            'notification_time': datetime.strptime(record['NotificationTime'], '%d/%m/%Y %H:%M')
+                        })
+                except Exception as e:
+                    logger.error(f"Ошибка при обработке записи спавна: {e}")
+                    continue
+
+            return active_spawns
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении активных спавнов: {e}")
+            return []
+
+    def update_spawn_status(self, spawn_id: int, status: str) -> bool:
+        """Обновляет статус спавна"""
+        try:
+            if not self.boss_spawn_ws:
+                return False
+
+            # Находим строку с нужным ID
+            cell = self.boss_spawn_ws.find(str(spawn_id))
+            if cell:
+                # Обновляем статус (8-й столбец, если считать с 1)
+                self.boss_spawn_ws.update_cell(cell.row, 8, status)
+                logger.info(f"✅ Статус спавна {spawn_id} обновлен на '{status}'")
+                return True
+
+            logger.warning(f"⚠️ Спавн с ID {spawn_id} не найден")
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при обновлении статуса спавна: {e}")
+            return False
+
+    def get_tier4_bosses(self) -> List[str]:
+        """Получает список всех Tier 4 боссов из сегодняшнего расписания"""
+        try:
+            bosses_data = self.get_today_bosses()
+            tier4_bosses = bosses_data.get('tier4', [])
+
+            # Извлекаем только имена боссов
+            boss_names = []
+            for guild, boss_name in tier4_bosses:
+                if boss_name not in boss_names:
+                    boss_names.append(boss_name)
+
+            return boss_names
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении списка боссов: {e}")
+            return []
 
 
 # Создаем глобальный экземпляр менеджера
