@@ -106,6 +106,10 @@ class TimeInputModal(Modal):
                     channel_id=str(interaction.channel_id),
                     created_by=str(interaction.user.id)
                 )
+                if spawn_id:
+                    logger.info(f"✅ Спавн сохранен в базу данных с ID: {spawn_id}")
+                else:
+                    logger.error("❌ Ошибка сохранения спавна в базу данных")
 
                 # Отправляем подтверждение
                 spawn_time_str = spawn_time.strftime('%d/%m/%Y %H:%M')
@@ -417,6 +421,42 @@ class DiscordBot:
             except Exception as e:
                 logger.error(f"❌ Ошибка в команде spawn: {e}")
                 await ctx.send("❌ Произошла ошибка при установке спавна")
+
+        @self.bot.command(name="debug_spawns")
+        async def debug_spawns_command(ctx):
+            """Показывает отладочную информацию о спавнах"""
+            try:
+                # Получаем все спавны из базы
+                all_spawns = db.get_all_active_spawns()
+
+                embed = discord.Embed(
+                    title="🐛 Отладочная информация о спавнах",
+                    color=0xff9900
+                )
+
+                if not all_spawns:
+                    embed.description = "В базе данных нет активных спавнов"
+                else:
+                    embed.description = f"Всего активных спавнов в базе: {len(all_spawns)}"
+
+                    for spawn in all_spawns:
+                        embed.add_field(
+                            name=f"⚔️ {spawn['boss_name']} (ID: {spawn['id']})",
+                            value=(
+                                f"**Гильдия:** {spawn['guild']}\n"
+                                f"**Время спавна:** {spawn['spawn_time']}\n"
+                                f"**Уведомление:** {spawn['notification_time']}\n"
+                                f"**Статус:** {spawn['status']}\n"
+                                f"**Уведомлен:** {'✅' if spawn['notified'] else '❌'}"
+                            ),
+                            inline=False
+                        )
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде debug_spawns: {e}")
+                await ctx.send(f"❌ Ошибка: {e}")
 
         # Команда для просмотра активных спавнов
         @self.bot.command(name="spawn_list")

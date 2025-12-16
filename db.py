@@ -3,6 +3,10 @@ from datetime import datetime
 import pytz
 import json
 from typing import List, Dict, Optional
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 # Подключение к базе данных
@@ -367,25 +371,33 @@ def get_all_active_discord_users() -> List[Dict]:
 def add_spawn_notification(boss_name: str, spawn_time: datetime, guild: str,
                            channel_id: str, created_by: str) -> int:
     """Добавляет запись о спавне босса в базу данных"""
-    conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    # Добавляем запись
-    created_at = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S')
-    spawn_time_str = spawn_time.strftime('%Y-%m-%d %H:%M:%S')
-    notification_time = (spawn_time - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
+        created_at = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S')
+        spawn_time_str = spawn_time.strftime('%Y-%m-%d %H:%M:%S')
+        notification_time = (spawn_time - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
 
-    cursor.execute('''
-        INSERT INTO boss_spawns 
-        (boss_name, spawn_time, guild, channel_id, created_by, created_at, notification_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (boss_name, spawn_time_str, guild, channel_id, created_by, created_at, notification_time))
+        logger.info(
+            f"💾 Сохранение в базу: {boss_name}, время спавна: {spawn_time_str}, уведомление: {notification_time}")
 
-    spawn_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
+        cursor.execute('''
+            INSERT INTO boss_spawns 
+            (boss_name, spawn_time, guild, channel_id, created_by, created_at, notification_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (boss_name, spawn_time_str, guild, channel_id, created_by, created_at, notification_time))
 
-    return spawn_id
+        spawn_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        logger.info(f"✅ Спавн сохранен в базу с ID: {spawn_id}")
+        return spawn_id
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при сохранении спавна в базу: {e}")
+        return 0
 
 
 def get_active_spawns() -> List[Dict]:
@@ -466,6 +478,20 @@ def get_spawns_for_notification() -> List[Dict]:
 
     current_time = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S')
 
+    # ДЛЯ ОТЛАДКИ: получим все активные спавны
+    cursor.execute('''
+        SELECT * FROM boss_spawns 
+        WHERE status = 'active' 
+        AND spawn_time > ?
+        ORDER BY spawn_time
+    ''', (current_time,))
+
+    all_spawns = [dict(row) for row in cursor.fetchall()]
+    logger.info(f"📋 Всего активных спавнов в базе: {len(all_spawns)}")
+    for spawn in all_spawns:
+        logger.info(f"   - {spawn['boss_name']} в {spawn['spawn_time']}, уведомление в {spawn['notification_time']}")
+
+    # Теперь ищем те, для которых нужно отправить уведомление
     cursor.execute('''
         SELECT * FROM boss_spawns 
         WHERE status = 'active' 
@@ -478,6 +504,7 @@ def get_spawns_for_notification() -> List[Dict]:
     spawns = [dict(row) for row in cursor.fetchall()]
     conn.close()
 
+    logger.info(f"🔍 Найдено спавнов для уведомления: {len(spawns)}")
     return spawns
 
 
