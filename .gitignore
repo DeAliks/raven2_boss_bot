@@ -90,3 +90,5 @@ lib64/
 /discord_bot/__pycache__/
 /scheduler/__pycache__/
 credentials.json
+config.py
+sefty.py
