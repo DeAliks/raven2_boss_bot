@@ -73,6 +73,22 @@ class TimeInputModal(Modal):
             spawn_time = current_time + timedelta(hours=hours, minutes=minutes)
             notification_time = spawn_time - timedelta(minutes=10)
 
+            # Логируем информацию о спавне
+            logger.info(f"🎯 Установка спавна: {self.boss_name} для гильдии {self.guild_name}")
+            logger.info(f"📅 Время появления: {spawn_time.strftime('%d/%m/%Y %H:%M')}")
+            logger.info(f"⏰ Уведомление за 10 минут: {notification_time.strftime('%H:%M')}")
+
+            # Проверяем, есть ли такая гильдия в поддерживаемых
+            if self.guild_name not in SUPPORTED_GUILDS and self.guild_name != "DarkSyndicate":
+                logger.warning(f"⚠️ Нестандартная гильдия: {self.guild_name} для босса {self.boss_name}")
+                # Проверяем, есть ли гильдия в таблице расписания
+                if not sheets_manager.normalize_guild_name(self.guild_name):
+                    await interaction.response.send_message(
+                        f"⚠️ **Внимание:** Гильдия '{self.guild_name}' не найдена в списке поддерживаемых. "
+                        f"Уведомление может не работать корректно.",
+                        ephemeral=True
+                    )
+
             # Создаем запись для сохранения
             spawn_data = {
                 'boss_name': self.boss_name,
@@ -108,22 +124,33 @@ class TimeInputModal(Modal):
                     title="✅ Спавн установлен!",
                     description=(
                         f"**Босс:** {self.boss_name}\n"
+                        f"**Гильдия:** {self.guild_name}\n"
                         f"**Время до появления:** {time_until}\n"
                         f"**Время появления:** {spawn_time_str}\n"
-                        f"**Гильдия:** {self.guild_name}\n"
                         f"**Уведомление:** за 10 минут ({notification_time_str})\n"
                         f"**ID записи:** {spawn_id}"
                     ),
                     color=0x00ff00
                 )
 
-                embed.set_footer(text=f"Установлено: {interaction.user.display_name}")
+                embed.add_field(
+                    name="📊 Информация:",
+                    value=(
+                        f"• **Канал:** <#{interaction.channel_id}>\n"
+                        f"• **Установил:** {interaction.user.mention}\n"
+                        f"• **Уведомление:** {role_mention if 'DISCORD_ROLE_ID' in globals() else '@everyone'}"
+                    ),
+                    inline=False
+                )
+
+                embed.set_footer(text=f"Данные сохранены в Google Таблицу (лист BossSpawn)")
 
                 await interaction.response.send_message(embed=embed)
 
             else:
                 await interaction.response.send_message(
-                    "❌ Ошибка при сохранении в Google Таблицу",
+                    "❌ Ошибка при сохранении в Google Таблицу\n"
+                    "Пожалуйста, проверьте подключение к таблице.",
                     ephemeral=True
                 )
 
@@ -132,15 +159,21 @@ class TimeInputModal(Modal):
                 "❌ Пожалуйста, введите числа для часов и минут",
                 ephemeral=True
             )
+        except Exception as e:
+            logger.error(f"❌ Ошибка при сохранении спавна: {e}")
+            await interaction.response.send_message(
+                f"❌ Произошла ошибка: {str(e)}",
+                ephemeral=True
+            )
 
+# Заменяем класс BossSelectView на обновленную версию:
 
 class BossSelectView(View):
-    """View для выбора босса"""
+    """View для выбора босса с автоматическим определением гильдии"""
 
-    def __init__(self, boss_list: list, guild_name: str):
+    def __init__(self, boss_list: list):
         super().__init__(timeout=60)
         self.boss_list = boss_list
-        self.guild_name = guild_name
 
         # Создаем выпадающий список
         select = Select(
@@ -158,10 +191,30 @@ class BossSelectView(View):
     async def select_callback(self, interaction: discord.Interaction):
         selected_boss = interaction.data['values'][0]
 
-        # Открываем модальное окно для ввода времени
-        modal = TimeInputModal(selected_boss, self.guild_name)
-        await interaction.response.send_modal(modal)
+        # ОПРЕДЕЛЯЕМ ГИЛЬДИЮ ИЗ ТАБЛИЦЫ
+        guild_name = sheets_manager.get_guild_for_tier4_boss(selected_boss)
 
+        if not guild_name:
+            # Если гильдия не найдена, используем настройки сервера как запасной вариант
+            guild_id = str(interaction.guild.id)
+            settings = db.get_discord_guild(guild_id)
+            guild_name = settings['selected_guild'] if settings else "DarkSyndicate"
+
+            # Уведомляем пользователя
+            await interaction.response.send_message(
+                f"⚠️ **Внимание:** Босс '{selected_boss}' не найден в расписании.\n"
+                f"Используется гильдия из настроек сервера: **{guild_name}**",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"✅ Найдена гильдия для босса: **{guild_name}**",
+                ephemeral=True
+            )
+
+        # Открываем модальное окно для ввода времени
+        modal = TimeInputModal(selected_boss, guild_name)
+        await interaction.response.send_modal(modal)
 
 class DiscordBot:
     def __init__(self):
@@ -259,19 +312,12 @@ class DiscordBot:
                 logger.error(f"❌ Ошибка в команде start_boss_alert: {e}")
                 await ctx.send("❌ Произошла ошибка при настройке уведомлений")
 
-        # НОВАЯ КОМАНДА: spawn
+        # Заменяем команду spawn на обновленную версию:
+
         @self.bot.command(name="spawn")
         async def spawn_command(ctx):
             """Устанавливает время до появления босса 4 тира"""
             try:
-                # Получаем настройки сервера
-                guild_id = str(ctx.guild.id)
-                settings = db.get_discord_guild(guild_id)
-
-                guild_name = "DarkSyndicate"  # Значение по умолчанию
-                if settings:
-                    guild_name = settings['selected_guild']
-
                 # Получаем список боссов 4 тира
                 boss_list = sheets_manager.get_tier4_bosses()
 
@@ -286,33 +332,52 @@ class DiscordBot:
                 embed = discord.Embed(
                     title="🎯 Установка спавна босса",
                     description=(
+                        "**ВАЖНО:** Бот автоматически определит гильдию босса из расписания!\n\n"
                         "Выберите босса 4 тира из списка ниже.\n"
                         "После выбора откроется окно для указания времени до появления."
                     ),
                     color=0x0099ff
                 )
 
-                embed.add_field(
-                    name="📋 Доступные боссы:",
-                    value="\n".join([f"• {boss}" for boss in boss_list]),
-                    inline=False
-                )
+                # Получаем распределение боссов по гильдиям для информативности
+                bosses_data = sheets_manager.get_today_bosses()
+                tier4_bosses = bosses_data.get('tier4', [])
+
+                if tier4_bosses:
+                    # Группируем боссов по гильдиям для отображения
+                    guilds_dict = {}
+                    for guild, boss in tier4_bosses:
+                        if guild not in guilds_dict:
+                            guilds_dict[guild] = []
+                        guilds_dict[guild].append(boss)
+
+                    embed.add_field(
+                        name="📊 Распределение боссов по гильдиям:",
+                        value="\n".join([f"**🏷 {guild}:**\n" + "\n".join([f"• {boss}" for boss in bosses])
+                                         for guild, bosses in guilds_dict.items()]),
+                        inline=False
+                    )
+                else:
+                    embed.add_field(
+                        name="📋 Доступные боссы:",
+                        value="\n".join([f"• {boss}" for boss in boss_list]),
+                        inline=False
+                    )
 
                 embed.add_field(
                     name="ℹ️ Как это работает:",
                     value=(
                         "1. Выберите босса из списка\n"
-                        "2. Укажите время до его появления (часы и минуты)\n"
-                        "3. Бот уведомит гильдию за 10 минут до появления\n"
-                        "4. Данные сохраняются в Google Таблицу"
+                        "2. Бот автоматически определит его гильдию из расписания\n"
+                        "3. Укажите время до его появления (часы и минуты)\n"
+                        "4. Бот уведомит гильдию за 10 минут до появления\n"
+                        "5. Данные сохраняются в Google Таблицу (лист BossSpawn)"
                     ),
                     inline=False
                 )
 
-                embed.set_footer(text=f"Гильдия: {guild_name}")
-
-                # Создаем View с выбором босса
-                view = BossSelectView(boss_list, guild_name)
+                # Создаем View с выбором босса (теперь без передачи гильдии)
+                view = BossSelectView(boss_list)
                 await ctx.send(embed=embed, view=view)
 
             except Exception as e:
@@ -983,7 +1048,10 @@ class DiscordBot:
                     message = ""
 
                     if is_free_farm:
-                        message = f"🎯 **FREE FARM через 10 минут ({time_key})!**\n\n"
+                        # Используем роль Raven2 для упоминания
+                        role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID else "@everyone"
+                        message = f"{role_mention}\n"
+                        message += f"🎯 **FREE FARM через 10 минут ({time_key})!**\n\n"
 
                         if time_key == '03:30':
                             message += "🟢 **1 тир**\n\n"
@@ -1067,7 +1135,6 @@ class DiscordBot:
 
         except Exception as e:
             logger.error(f"❌ Общая ошибка в send_boss_notification: {e}")
-
     async def send_rift_notification(self):
         """Отправляет уведомление о разломах во все активные Discord серверы"""
         try:
