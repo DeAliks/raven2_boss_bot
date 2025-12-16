@@ -121,15 +121,6 @@ class TimeInputModal(Modal):
 
                 await interaction.response.send_message(embed=embed)
 
-                # Запускаем задачу для уведомления (опционально)
-                # asyncio.create_task(
-                #     schedule_boss_notification(
-                #         self.boss_name,
-                #         spawn_time,
-                #         self.guild_name,
-                #         interaction.channel_id
-                #     )
-                # )
             else:
                 await interaction.response.send_message(
                     "❌ Ошибка при сохранении в Google Таблицу",
@@ -182,9 +173,6 @@ class DiscordBot:
         # Используем префикс '!' для текстовых команд
         self.bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
         self.setup_handlers()
-
-        # Запускаем задачу проверки спавнов при старте
-        self.check_scheduled_spawns.start()
 
     def setup_handlers(self):
         @self.bot.event
@@ -491,7 +479,7 @@ class DiscordBot:
 
         @self.bot.command(name="today_bosses")
         async def today_bosses(ctx, guild_name: str = None):
-            """Показывает боссов на сегодня для указанной гильдии"""
+            """Показывает боссы на сегодня для указанной гильдии"""
             try:
                 # Если гильдия не указана, берем из настроек сервера
                 if not guild_name:
@@ -738,7 +726,10 @@ class DiscordBot:
                 stats = db.get_user_stats()
                 banned_guilds = db.get_banned_guilds()
 
-                embed = discord.Embed(title="📊 Статистика пользователей", color=0x0099ff)
+                embed = discord.Embed(
+                    title="📊 Статистика пользователей",
+                    color=0x0099ff
+                )
 
                 embed.add_field(name="👥 Всего пользователей", value=stats['total_users'], inline=True)
                 embed.add_field(name="✅ Активных", value=stats['active_users'], inline=True)
@@ -1288,6 +1279,7 @@ class DiscordBot:
     @check_scheduled_spawns.before_loop
     async def before_check_scheduled_spawns(self):
         await self.bot.wait_until_ready()
+        logger.info("✅ Фоновая задача check_scheduled_spawns готова к работе")
 
     def run(self):
         """Запускает Discord бота"""
