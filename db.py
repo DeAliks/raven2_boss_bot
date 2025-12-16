@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 import logging
 
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -508,6 +509,21 @@ def get_spawns_for_notification() -> List[Dict]:
     return spawns
 
 
+def get_all_active_spawns() -> List[Dict]:
+    """Получает все активные спавны боссов (для отладки)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT * FROM boss_spawns 
+        WHERE status = 'active'
+        ORDER BY spawn_time
+    ''')
+
+    spawns = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return spawns
 def delete_old_spawns(days: int = 7):
     """Удаляет старые спавны"""
     conn = get_connection()
