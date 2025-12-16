@@ -391,33 +391,35 @@ class GoogleSheetsManager:
             logger.error(f"❌ Ошибка при получении списка боссов: {e}")
             return []
 
+    def get_guild_for_tier4_boss(self, boss_name: str) -> Optional[str]:
+        """Определяет гильдию для босса 4 тира из основного расписания"""
+        try:
+            # Получаем данные о боссах 4 тира
+            bosses_data = self.get_today_bosses()
+            tier4_bosses = bosses_data.get('tier4', [])
+
+            # Ищем гильдию для указанного босса
+            for guild, boss in tier4_bosses:
+                if boss.strip() == boss_name.strip():
+                    return guild
+
+            # Если босс не найден, логируем предупреждение
+            logger.warning(f"⚠️ Босс '{boss_name}' не найден в расписании Tier 4")
+
+            # Список всех боссов для отладки
+            available_bosses = [boss for _, boss in tier4_bosses]
+            logger.info(f"📋 Доступные боссы Tier 4: {available_bosses}")
+
+            return None
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при поиске гильдии для босса {boss_name}: {e}")
+            return None
+
 
 # В классе GoogleSheetsManager добавляем новый метод:
 
-def get_guild_for_tier4_boss(self, boss_name: str) -> Optional[str]:
-    """Определяет гильдию для босса 4 тира из основного расписания"""
-    try:
-        # Получаем данные о боссах 4 тира
-        bosses_data = self.get_today_bosses()
-        tier4_bosses = bosses_data.get('tier4', [])
 
-        # Ищем гильдию для указанного босса
-        for guild, boss in tier4_bosses:
-            if boss.strip() == boss_name.strip():
-                return guild
-
-        # Если босс не найден, логируем предупреждение
-        logger.warning(f"⚠️ Босс '{boss_name}' не найден в расписании Tier 4")
-
-        # Список всех боссов для отладки
-        available_bosses = [boss for _, boss in tier4_bosses]
-        logger.info(f"📋 Доступные боссы Tier 4: {available_bosses}")
-
-        return None
-
-    except Exception as e:
-        logger.error(f"❌ Ошибка при поиске гильдии для босса {boss_name}: {e}")
-        return None
 
 # Создаем глобальный экземпляр менеджера
 sheets_manager = GoogleSheetsManager()

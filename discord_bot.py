@@ -73,28 +73,26 @@ class TimeInputModal(Modal):
             spawn_time = current_time + timedelta(hours=hours, minutes=minutes)
             notification_time = spawn_time - timedelta(minutes=10)
 
+            # Получаем гильдию из таблицы для этого босса
+            guild_name = sheets_manager.get_guild_for_tier4_boss(self.boss_name)
+
+            # Если гильдия не найдена в таблице, используем значение из модального окна
+            if not guild_name:
+                guild_name = self.guild_name
+                logger.warning(
+                    f"⚠️ Для босса '{self.boss_name}' гильдия не найдена в таблице, используется: {guild_name}")
+
             # Логируем информацию о спавне
-            logger.info(f"🎯 Установка спавна: {self.boss_name} для гильдии {self.guild_name}")
+            logger.info(f"🎯 Установка спавна: {self.boss_name} для гильдии {guild_name}")
             logger.info(f"📅 Время появления: {spawn_time.strftime('%d/%m/%Y %H:%M')}")
             logger.info(f"⏰ Уведомление за 10 минут: {notification_time.strftime('%H:%M')}")
-
-            # Проверяем, есть ли такая гильдия в поддерживаемых
-            if self.guild_name not in SUPPORTED_GUILDS and self.guild_name != "DarkSyndicate":
-                logger.warning(f"⚠️ Нестандартная гильдия: {self.guild_name} для босса {self.boss_name}")
-                # Проверяем, есть ли гильдия в таблице расписания
-                if not sheets_manager.normalize_guild_name(self.guild_name):
-                    await interaction.response.send_message(
-                        f"⚠️ **Внимание:** Гильдия '{self.guild_name}' не найдена в списке поддерживаемых. "
-                        f"Уведомление может не работать корректно.",
-                        ephemeral=True
-                    )
 
             # Создаем запись для сохранения
             spawn_data = {
                 'boss_name': self.boss_name,
                 'spawn_time': spawn_time,
                 'created_by': str(interaction.user.id),
-                'guild': self.guild_name,
+                'guild': guild_name,
                 'channel_id': str(interaction.channel_id)
             }
 
@@ -104,7 +102,7 @@ class TimeInputModal(Modal):
                 spawn_id = db.add_spawn_notification(
                     boss_name=self.boss_name,
                     spawn_time=spawn_time,
-                    guild=self.guild_name,
+                    guild=guild_name,
                     channel_id=str(interaction.channel_id),
                     created_by=str(interaction.user.id)
                 )
@@ -124,7 +122,7 @@ class TimeInputModal(Modal):
                     title="✅ Спавн установлен!",
                     description=(
                         f"**Босс:** {self.boss_name}\n"
-                        f"**Гильдия:** {self.guild_name}\n"
+                        f"**Гильдия:** {guild_name}\n"
                         f"**Время до появления:** {time_until}\n"
                         f"**Время появления:** {spawn_time_str}\n"
                         f"**Уведомление:** за 10 минут ({notification_time_str})\n"
@@ -133,24 +131,13 @@ class TimeInputModal(Modal):
                     color=0x00ff00
                 )
 
-                embed.add_field(
-                    name="📊 Информация:",
-                    value=(
-                        f"• **Канал:** <#{interaction.channel_id}>\n"
-                        f"• **Установил:** {interaction.user.mention}\n"
-                        f"• **Уведомление:** {role_mention if 'DISCORD_ROLE_ID' in globals() else '@everyone'}"
-                    ),
-                    inline=False
-                )
-
-                embed.set_footer(text=f"Данные сохранены в Google Таблицу (лист BossSpawn)")
+                embed.set_footer(text=f"Установлено: {interaction.user.display_name}")
 
                 await interaction.response.send_message(embed=embed)
 
             else:
                 await interaction.response.send_message(
-                    "❌ Ошибка при сохранении в Google Таблицу\n"
-                    "Пожалуйста, проверьте подключение к таблице.",
+                    "❌ Ошибка при сохранении в Google Таблицу",
                     ephemeral=True
                 )
 
@@ -165,7 +152,6 @@ class TimeInputModal(Modal):
                 f"❌ Произошла ошибка: {str(e)}",
                 ephemeral=True
             )
-
 # Заменяем класс BossSelectView на обновленную версию:
 
 class BossSelectView(View):
