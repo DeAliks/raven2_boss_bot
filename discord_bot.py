@@ -9,6 +9,7 @@ import asyncio
 from config import DISCORD_BOT_TOKEN, TIMEZONE, DISCORD_ROLE_ID
 from google_sheets_manager import sheets_manager
 import db
+import asyncio
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -267,9 +268,10 @@ class DiscordBot:
             logger.info(f'✅ ID бота: {self.bot.user.id}')
 
             # Запускаем фоновые задачи
-            self.check_bosses.start()
+            if not self.check_bosses.is_running():
+                self.check_bosses.start()
+                logger.info("✅ Задача check_bosses запущена")
 
-            # ЗАПУСКАЕМ ЗАДАЧУ ДЛЯ ПРОВЕРКИ СПАВНОВ
             if not self.check_scheduled_spawns.is_running():
                 self.check_scheduled_spawns.start()
                 logger.info("✅ Задача check_scheduled_spawns запущена")
@@ -1209,12 +1211,14 @@ class DiscordBot:
 
         except Exception as e:
             logger.error(f"❌ Общая ошибка в send_boss_notification: {e}")
+
     async def send_rift_notification(self):
         """Отправляет уведомление о разломах во все активные Discord серверы"""
         try:
             active_servers = db.get_all_active_discord_servers()
 
             if not active_servers:
+                logger.info("📭 Нет активных серверов для отправки уведомлений о разломах")
                 return
 
             # Используем роль Raven2 для упоминания
@@ -1235,21 +1239,26 @@ class DiscordBot:
                 try:
                     guild = self.bot.get_guild(int(guild_id))
                     if not guild:
+                        logger.warning(f"❌ Сервер {guild_id} не найден")
                         continue
 
                     channel = guild.get_channel(int(channel_id))
                     if not channel:
+                        logger.warning(f"❌ Канал {channel_id} не найден на сервере {guild.name}")
                         continue
 
-                    await channel.send(message)
+                    # Отправляем сообщение с таймаутом
+                    await asyncio.wait_for(channel.send(message), timeout=10.0)
                     logger.info(f"✅ Уведомление о разломах отправлено в Discord сервер {guild.name}")
 
+                except asyncio.TimeoutError:
+                    logger.error(f"⏱️ Таймаут при отправке уведомления о разломах на сервер {guild_id}")
                 except Exception as e:
-                    logger.error(f"❌ Ошибка отправки уведомления о разломах на сервер {guild_id}: {e}")
+                    logger.error(f"❌ Ошибка отправки уведомления о разломах на сервер {guild_id}: {e}", exc_info=True)
                     continue
 
         except Exception as e:
-            logger.error(f"❌ Общая ошибка в send_rift_notification: {e}")
+            logger.error(f"❌ Общая ошибка в send_rift_notification: {e}", exc_info=True)
 
     async def send_tier4_notification(self):
         """Отправляет уведомление о боссах 4 тира во все активные Discord серверы"""
@@ -1323,6 +1332,8 @@ class DiscordBot:
             now = datetime.now(tz)
             current_time = now.strftime('%H:%M')
 
+            logger.info(f"⏰ Проверка времени: {current_time}")
+
             # Время за 10 минут до появления боссов
             notification_times = ['03:20', '07:20', '11:20', '15:20', '19:20', '23:20']
 
@@ -1344,19 +1355,25 @@ class DiscordBot:
                     is_free_farm = tiers_info[time_key]['free_farm']
                     schedule_key = now.strftime('%d.%m')
 
+                    logger.info(f"🎯 Отправка уведомления для {time_key}: {target_tiers}")
                     await self.send_boss_notification(time_key, target_tiers, is_free_farm, schedule_key)
+                    logger.info(f"✅ Уведомление отправлено для {time_key}")
 
             # Проверяем разломы
             rift_times = ['14:20', '22:20']
             if current_time in rift_times:
+                logger.info("🌀 Проверка разломов")
                 await self.send_rift_notification()
+                logger.info(f"✅ Уведомление о разломах отправлено")
 
             # Проверяем боссов 4 тира в 19:20
             if current_time == '19:20':
+                logger.info("🔵 Проверка боссов 4 тира")
                 await self.send_tier4_notification()
+                logger.info(f"✅ Уведомление о Tier 4 отправлено")
 
         except Exception as e:
-            logger.error(f"❌ Ошибка в check_bosses: {e}")
+            logger.error(f"❌ Ошибка в задаче check_bosses: {e}", exc_info=True)
 
     @check_bosses.before_loop
     async def before_check_bosses(self):
