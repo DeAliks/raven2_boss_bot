@@ -1,4 +1,4 @@
-# scheduler.py (обновленная версия с RussianTeam)
+# scheduler.py
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from datetime import datetime

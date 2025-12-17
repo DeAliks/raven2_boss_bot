@@ -1,3 +1,4 @@
+#google_sheet_manager.py
 import gspread
 from cachetools import cached, TTLCache
 from datetime import datetime, timedelta
@@ -122,7 +123,7 @@ class GoogleSheetsManager:
                     continue
 
                 # Обрабатываем строки в этом разделе
-                for row_idx in range(start_row, end_row + 1):
+                for row_idx in range(start_row + 1, end_row + 1):  # +1 чтобы пропустить заголовок
                     if row_idx >= len(all_data):
                         continue
 
@@ -134,6 +135,10 @@ class GoogleSheetsManager:
                         target_col_index] else ""
                     boss_cell = row[target_col_index + 1].strip() if target_col_index + 1 < len(row) and row[
                         target_col_index + 1] else ""
+
+                    # Пропускаем строки, которые являются заголовками других разделов
+                    if any(x in guild_cell.lower() for x in ['тир ', 'боссы', 'бездны']):
+                        continue
 
                     # Проверяем, что это данные о боссе
                     if (guild_cell and
@@ -190,12 +195,16 @@ class GoogleSheetsManager:
 
             first_cell = row[0].strip() if row[0] else ""
 
-            # Проверяем, является ли строка началом нового раздела (новая структура)
-            section_match = self._detect_section_new_structure(first_cell)
+            # Проверяем всю строку на наличие заголовков тиров
+            row_content = " ".join([str(cell).strip() for cell in row if cell])
+            section_match = self._detect_section_new_structure(row_content)
+
             if section_match:
                 # Сохраняем предыдущий раздел
                 if current_section and section_start != -1:
-                    sections.append((current_section, section_start, i - 1))
+                    # Ищем конец раздела - следующая строка с заголовком или пустая строка после данных
+                    end_row = i - 1
+                    sections.append((current_section, section_start, end_row))
 
                 # Начинаем новый раздел
                 current_section = section_match
@@ -207,23 +216,22 @@ class GoogleSheetsManager:
             sections.append((current_section, section_start, len(all_data) - 1))
 
         return sections
-
     def _detect_section_new_structure(self, cell_content):
         """Определяет, является ли ячейка началом раздела в НОВОЙ структуре."""
         lower_content = cell_content.lower()
 
-        # Новая структура таблицы
-        if 'тир 1' in lower_content or '1 тир' in lower_content:
+        # Новая структура таблицы с различными вариантами написания
+        if 'тир 1' in lower_content or '1 тир' in lower_content or 'тир1' in lower_content:
             return 'tier1'
-        elif 'тир 2' in lower_content or '2 тир' in lower_content:
+        elif 'тир 2' in lower_content or '2 тир' in lower_content or 'тир2' in lower_content:
             return 'tier2'
-        elif 'тир 3' in lower_content or '3 тир' in lower_content:
+        elif 'тир 3' in lower_content or '3 тир' in lower_content or 'тир3' in lower_content:
             return 'tier3'
-        elif 'тир 4' in lower_content or '4 тир' in lower_content:
+        elif 'тир 4' in lower_content or '4 тир' in lower_content or 'тир4' in lower_content:
             return 'tier4'
-        elif 'тир 5' in lower_content or '5 тир' in lower_content:
+        elif 'тир 5' in lower_content or '5 тир' in lower_content or 'тир5' in lower_content:
             return 'tier5'
-        elif 'боссы бездны' in lower_content or 'бездны' in lower_content:
+        elif 'боссы бездны' in lower_content or 'бездны' in lower_content or 'бездны 1 этаж' in lower_content:
             return 'abyss'
 
         return None
@@ -247,6 +255,10 @@ class GoogleSheetsManager:
 
     def normalize_guild_name(self, guild_name):
         """Нормализует названия гильдий для единообразия."""
+        # Если гильдия не указана, возвращаем None
+        if not guild_name or guild_name.strip() == "":
+            return None
+
         guild_map = {
             'darksyndicate': 'DarkSyndicate',
             'dark syndicate': 'DarkSyndicate',
