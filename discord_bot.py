@@ -1319,8 +1319,8 @@ class DiscordBot:
                 logger.info("📭 Нет активных серверов для отправки уведомлений о разломах")
                 return
 
-            # Используем роль Raven2 для упоминания
-            role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID else "@everyone"
+
+            role_mention = f"@everyone"
 
             message = (
                 "🌀 **РАЗЛОМЫ СКОРО ПОЯВЯТСЯ!** 🌀\n\n"
