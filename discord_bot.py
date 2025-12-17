@@ -936,6 +936,69 @@ class DiscordBot:
             """Проверка прав администратора"""
             await ctx.send("✅ У вас есть права администратора!")
 
+        @self.bot.command(name="check_servers")
+        async def check_servers_command(ctx):
+            """Проверяет настройки и доступность серверов"""
+            try:
+                active_servers = db.get_all_active_discord_servers()
+
+                if not active_servers:
+                    await ctx.send("📭 Нет активных серверов")
+                    return
+
+                embed = discord.Embed(
+                    title="🔍 Проверка настроек серверов",
+                    description=f"Всего активных серверов: {len(active_servers)}",
+                    color=0x0099ff
+                )
+
+                for server in active_servers:
+                    guild_id = server['guild_id']
+                    channel_id = server['channel_id']
+                    selected_guild = server['selected_guild']
+
+                    try:
+                        guild = self.bot.get_guild(int(guild_id))
+                        if not guild:
+                            status = "❌ Сервер не найден"
+                            channel_status = "—"
+                        else:
+                            channel = guild.get_channel(int(channel_id))
+                            if not channel:
+                                status = f"❌ Канал не найден"
+                                channel_status = f"ID: {channel_id}"
+                            else:
+                                # Проверяем права
+                                bot_member = guild.get_member(self.bot.user.id)
+                                if not bot_member:
+                                    status = "❌ Бот не участник"
+                                elif not channel.permissions_for(bot_member).send_messages:
+                                    status = "❌ Нет прав на отправку"
+                                else:
+                                    status = "✅ Активен"
+
+                                channel_status = f"#{channel.name}"
+
+                    except Exception as e:
+                        status = f"❌ Ошибка: {str(e)[:50]}"
+                        channel_status = "—"
+
+                    embed.add_field(
+                        name=f"🏷 {selected_guild}",
+                        value=(
+                            f"**Сервер:** {guild.name if guild else guild_id}\n"
+                            f"**Канал:** {channel_status}\n"
+                            f"**Статус:** {status}"
+                        ),
+                        inline=False
+                    )
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка в команде check_servers: {e}")
+                await ctx.send(f"❌ Ошибка: {e}")
+
         # Добавляем команду справки
         @self.bot.command(name="commands")
         async def commands_help(ctx):
@@ -1100,32 +1163,60 @@ class DiscordBot:
             active_servers = db.get_all_active_discord_servers()
 
             if not active_servers:
+                logger.info("📭 Нет активных серверов для отправки уведомлений")
                 return
 
             # Получаем данные о боссах
             bosses_data = sheets_manager.get_today_bosses()
+            logger.info(
+                f"📊 Получены данные о {len(bosses_data.get('tier1', [])) + len(bosses_data.get('tier2', []))} боссах")
 
             for server in active_servers:
                 guild_id = server['guild_id']
                 channel_id = server['channel_id']
                 selected_guild = server['selected_guild']
 
+                logger.info(f"🔍 Обработка сервера {guild_id}, канал {channel_id}, гильдия {selected_guild}")
+
                 try:
-                    # Получаем канал
+                    # Получаем канал с проверкой
                     guild = self.bot.get_guild(int(guild_id))
                     if not guild:
+                        logger.warning(f"❌ Сервер {guild_id} не найден (бот не состоит на этом сервере)")
+                        # Деактивируем сервер в базе данных
+                        db.deactivate_discord_server(guild_id)
                         continue
 
                     channel = guild.get_channel(int(channel_id))
                     if not channel:
+                        logger.warning(f"❌ Канал {channel_id} не найден на сервере {guild.name}")
+                        # Деактивируем сервер в базе данных
+                        db.deactivate_discord_server(guild_id)
                         continue
+
+                    # Проверяем права на отправку сообщений в канал
+                    bot_member = guild.get_member(self.bot.user.id)
+                    if not bot_member:
+                        logger.warning(f"❌ Бот не является участником сервера {guild.name}")
+                        continue
+
+                    # Проверяем права на отправку сообщений
+                    if not channel.permissions_for(bot_member).send_messages:
+                        logger.warning(
+                            f"❌ У бота нет прав на отправку сообщений в канал #{channel.name} на сервере {guild.name}")
+                        continue
+
+                    # Проверяем права на упоминание everyone/here
+                    if not channel.permissions_for(bot_member).mention_everyone:
+                        logger.warning(f"⚠️ У бота нет прав на упоминание everyone в канале #{channel.name}")
 
                     # Формируем сообщение в зависимости от выбранной гильдии
                     message = ""
 
                     if is_free_farm:
                         # Используем роль Raven2 для упоминания
-                        role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID else "@everyone"
+                        role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID and channel.permissions_for(
+                            bot_member).mention_everyone else "@everyone"
                         message = f"{role_mention}\n"
                         message += f"🎯 **FREE FARM через 10 минут ({time_key})!**\n\n"
 
@@ -1161,11 +1252,13 @@ class DiscordBot:
                                         bosses_to_show[tier] = guild_bosses
 
                         if not bosses_to_show:
+                            logger.info(f"📭 Для гильдии {selected_guild} нет боссов в {time_key}")
                             continue
 
                         # Формируем сообщение
                         # Используем роль Raven2 для упоминания
-                        role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID else "@everyone"
+                        role_mention = f"<@&{DISCORD_ROLE_ID}>" if DISCORD_ROLE_ID and channel.permissions_for(
+                            bot_member).mention_everyone else "@everyone"
                         message = f"{role_mention}\n"
                         message += f"⏰ **Через 10 минут ({time_key}) появятся боссы:**\n"
                         message += f"**Гильдия:** {selected_guild}\n"
@@ -1201,16 +1294,21 @@ class DiscordBot:
 
                         message += "💀 **Удачи в бою!**"
 
-                    # Отправляем сообщение
-                    await channel.send(message)
-                    logger.info(f"✅ Уведомление отправлено в Discord сервер {guild.name}, канал {channel.name}")
+                    # Отправляем сообщение с таймаутом
+                    try:
+                        await asyncio.wait_for(channel.send(message), timeout=10.0)
+                        logger.info(f"✅ Уведомление отправлено в Discord сервер {guild.name}, канал {channel.name}")
+                    except asyncio.TimeoutError:
+                        logger.error(f"⏱️ Таймаут при отправке уведомления на сервер {guild.name}")
+                    except Exception as send_error:
+                        logger.error(f"❌ Ошибка отправки на сервер {guild.name}: {send_error}")
 
                 except Exception as e:
-                    logger.error(f"❌ Ошибка отправки уведомления на сервер {guild_id}: {e}")
+                    logger.error(f"❌ Ошибка обработки сервера {guild_id}: {e}", exc_info=True)
                     continue
 
         except Exception as e:
-            logger.error(f"❌ Общая ошибка в send_boss_notification: {e}")
+            logger.error(f"❌ Общая ошибка в send_boss_notification: {e}", exc_info=True)
 
     async def send_rift_notification(self):
         """Отправляет уведомление о разломах во все активные Discord серверы"""
