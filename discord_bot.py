@@ -1221,15 +1221,14 @@ class DiscordBot:
                         message += f"🎯 **FREE FARM через 10 минут ({time_key})!**\n\n"
 
                         if time_key == '03:30':
-                            message += "🟢 **1 тир**\n\n"
-                            message += "⚔️ Можно бить **ВСЕХ** боссов 1 тира!\n"
-                            message += "Независимо от вашей гильдии!"
-                        elif time_key == '07:30':
-                            message += "🟢 **1 тир** + 🟡 **2 тир**\n\n"
-                            message += "⚔️ Можно бить **ВСЕХ** боссов 1 и 2 тира!\n"
-                            message += "Независимо от вашей гильдии!"
+                            message += "🟢 **1 Tier**\n\n"
+                            message += "⚔️ FREE FARM\n"
 
-                        message += "\n🎉 **Удачи в охоте!**"
+                        elif time_key == '07:30':
+                            message += "🟢 **1 Tier** + 🟡 **2 Tier**\n\n"
+                            message += "⚔️ FREE FARM\n"
+
+
 
                     else:
                         # Фильтруем боссов для выбранной гильдии
@@ -1261,8 +1260,9 @@ class DiscordBot:
                             bot_member).mention_everyone else "@everyone"
                         message = f"{role_mention}\n"
                         message += f"⏰ **Через 10 минут ({time_key}) появятся боссы:**\n"
-                        message += f"**Гильдия:** {selected_guild}\n"
-                        message += f"**Слот:** {schedule_key}\n\n"
+                        message += f"⏰ **After 10 minutes ({time_key}) the boss will appear:**\n"
+                        message += f"**Гильдия / Guild:** {selected_guild}\n"
+                        message += f"**День / Day:** {schedule_key}\n\n"
 
                         if selected_guild == "All":
                             # Для All группируем по гильдиям
@@ -1292,7 +1292,7 @@ class DiscordBot:
                                     message += f"• {boss}\n"
                                 message += "\n"
 
-                        message += "💀 **Удачи в бою!**"
+
 
                     # Отправляем сообщение с таймаутом
                     try:
@@ -1324,10 +1324,10 @@ class DiscordBot:
 
             message = (
                 "🌀 **РАЗЛОМЫ СКОРО ПОЯВЯТСЯ!** 🌀\n\n"
+                "🌀 **RIFT COMING SOON** 🌀\n\n"
                 f"{role_mention}\n"
                 "⏰ Через 10 минут откроются разломы\n"
-                "⚔️ Готовьтесь к битве!\n\n"
-                "💎 Не пропустите возможность получить ценные награды!"
+                "⏰ The rifts will open in 10 minutes."
             )
 
             for server in active_servers:
@@ -1520,10 +1520,11 @@ class DiscordBot:
                     message = (
                         f"{role_mention}\n"
                         f"⚔️ **ВНИМАНИЕ! СПАВН БОССА!** ⚔️\n\n"
+                        f"⚔️ **SPAWN THE BOSS!** ⚔️\n\n"
                         f"Через 10 минут ({spawn_time_str}) появится босс:\n"
+                        f"After 10 minutes ({spawn_time_str}), the boss will appear:\n"
                         f"**{spawn['boss_name']}**\n"
-                        f"Гильдия: **{spawn['guild']}**\n\n"
-                        f"💀 Готовьтесь к битве! 💀\n"
+                        f"Guild: **{spawn['guild']}**\n\n"
                         f"*(спавн установлен пользователем)*"
                     )
 
