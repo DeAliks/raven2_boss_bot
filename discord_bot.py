@@ -1,6 +1,6 @@
 import discord
 from discord.ext import tasks, commands
-from discord.ui import Select, View, Modal, TextInput
+from discord.ui import Select, View, Modal, TextInput, Button
 from datetime import datetime, timedelta
 import pytz
 import random
@@ -191,50 +191,6 @@ class BossSelectView(View):
             settings = db.get_discord_guild(guild_id)
             guild_name = settings['selected_guild'] if settings else "DarkSyndicate"
 
-            # Открываем модальное окно
-            modal = TimeInputModal(selected_boss, guild_name)
-            await interaction.response.send_modal(modal)
-
-            # Отправляем предупреждение через followup
-            await interaction.followup.send(
-                f"⚠️ **Внимание:** Босс '{selected_boss}' не найден в расписании.\n"
-                f"Используется гильдия из настроек сервера: **{guild_name}**",
-                ephemeral=True
-            )
-        else:
-            # Открываем модальное окно
-            modal = TimeInputModal(selected_boss, guild_name)
-            await interaction.response.send_modal(modal)
-
-    def __init__(self, boss_list: list):
-        super().__init__(timeout=60)
-        self.boss_list = boss_list
-
-        # Создаем выпадающий список
-        select = Select(
-            placeholder="Выберите босса...",
-            min_values=1,
-            max_values=1,
-            options=[
-                discord.SelectOption(label=boss, value=boss)
-                for boss in boss_list
-            ]
-        )
-        select.callback = self.select_callback
-        self.add_item(select)
-
-    async def select_callback(self, interaction: discord.Interaction):
-        selected_boss = interaction.data['values'][0]
-
-        # Определяем гильдию из таблицы
-        guild_name = sheets_manager.get_guild_for_tier4_boss(selected_boss)
-
-        if not guild_name:
-            # Если гильдия не найдена, используем настройки сервера
-            guild_id = str(interaction.guild.id)
-            settings = db.get_discord_guild(guild_id)
-            guild_name = settings['selected_guild'] if settings else "DarkSyndicate"
-
             # Открываем модальное окно БЕЗ предварительного ответа
             modal = TimeInputModal(selected_boss, guild_name)
             await interaction.response.send_modal(modal)
@@ -249,6 +205,47 @@ class BossSelectView(View):
             # Открываем модальное окно
             modal = TimeInputModal(selected_boss, guild_name)
             await interaction.response.send_modal(modal)
+
+
+class DeleteGuildConfirmView(View):
+    """View для подтверждения удаления гильдии"""
+
+    def __init__(self, guild_name: str, timeout: float = 60):
+        super().__init__(timeout=timeout)
+        self.guild_name = guild_name
+        self.confirmed = False
+
+    @discord.ui.button(label="✅ Подтвердить удаление", style=discord.ButtonStyle.danger)
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.confirmed = True
+        await interaction.response.defer()
+        self.stop()
+
+    @discord.ui.button(label="❌ Отмена", style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("❌ Удаление отменено.", ephemeral=True)
+        self.stop()
+
+
+class LockGuildConfirmView(View):
+    """View для подтверждения блокировки гильдии"""
+
+    def __init__(self, guild_name: str, timeout: float = 60):
+        super().__init__(timeout=timeout)
+        self.guild_name = guild_name
+        self.confirmed = False
+
+    @discord.ui.button(label="✅ Подтвердить блокировку", style=discord.ButtonStyle.primary)
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.confirmed = True
+        await interaction.response.defer()
+        self.stop()
+
+    @discord.ui.button(label="❌ Отмена", style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("❌ Блокировка отменена.", ephemeral=True)
+        self.stop()
+
 
 class DiscordBot:
     def __init__(self):
@@ -667,6 +664,246 @@ class DiscordBot:
                 logger.error(f"❌ Ошибка в команде today_bosses: {e}")
                 await ctx.send("❌ Произошла ошибка при получении списка боссов")
 
+        # НОВАЯ КОМАНДА: Удаление гильдии
+        @self.bot.command(name="delete_guild")
+        async def delete_guild_command(ctx, guild_name: str):
+            """Удаляет гильдию и всю её информацию (кроме DarkSyndicate)"""
+            try:
+                # Проверяем права администратора
+                if not ctx.author.guild_permissions.administrator:
+                    await ctx.send("❌ Эта команда требует прав администратора!")
+                    return
+
+                # Проверяем, что команда не вызывается для DarkSyndicate
+                if guild_name.lower() in ["darksyndicate", "dark syndicate", "dark_syndicate"]:
+                    await ctx.send("❌ Эта команда не может быть использована для гильдии DarkSyndicate!")
+                    return
+
+                # Проверяем, что команда вызывается на сервере
+                if not ctx.guild:
+                    await ctx.send("❌ Эта команда может быть использована только на сервере!")
+                    return
+
+                # Создаем embed для подтверждения
+                embed = discord.Embed(
+                    title="⚠️ ОПАСНОЕ ДЕЙСТВИЕ ⚠️",
+                    description=f"Вы уверены, что хотите удалить гильдию **{guild_name}**?\n\n"
+                                f"Это действие:\n"
+                                f"• Удалит всех пользователей этой гильдии\n"
+                                f"• Удалит все каналы этой гильдии\n"
+                                f"• Удалит все роли этой гильдии\n\n"
+                                f"**ЭТО ДЕЙСТВИЕ НЕОБРАТИМО!**",
+                    color=discord.Color.red()
+                )
+
+                # Создаем View с кнопками подтверждения
+                view = DeleteGuildConfirmView(guild_name)
+                await ctx.send(embed=embed, view=view)
+
+                # Ждем подтверждения
+                await view.wait()
+
+                if not view.confirmed:
+                    return
+
+                # Начинаем процесс удаления
+                await ctx.send(f"🔄 Начинаю удаление гильдии **{guild_name}**... Это может занять некоторое время.")
+
+                guild = ctx.guild
+                deletion_log = []
+
+                # 1. Находим и удаляем пользователей гильдии (кроме DarkSyndicate)
+                deleted_members = 0
+                for member in guild.members:
+                    # Проверяем, является ли пользователь ботом или DarkSyndicate
+                    if member.bot:
+                        continue
+
+                    # Ищем роли, связанные с гильдией
+                    member_roles = [role.name.lower() for role in member.roles]
+
+                    # Проверяем, есть ли у пользователя роль DarkSyndicate
+                    has_darksyndicate = any("darksyndicate" in role_name for role_name in member_roles)
+
+                    if not has_darksyndicate:
+                        # Ищем признаки принадлежности к целевой гильдии
+                        has_target_guild = any(guild_name.lower() in role_name for role_name in member_roles)
+
+                        if has_target_guild:
+                            try:
+                                await member.ban(reason=f"Удаление гильдии {guild_name}", delete_message_days=0)
+                                deletion_log.append(f"🚫 Забанен пользователь: {member.name}")
+                                deleted_members += 1
+                                await asyncio.sleep(1)  # Задержка чтобы не превысить лимиты Discord
+                            except discord.Forbidden:
+                                deletion_log.append(f"⚠️ Не удалось забанить {member.name} (недостаточно прав)")
+                            except Exception as e:
+                                deletion_log.append(f"⚠️ Ошибка при бане {member.name}: {str(e)}")
+
+                # 2. Находим и удаляем каналы гильдии
+                deleted_channels = 0
+                for channel in guild.channels:
+                    channel_name = channel.name.lower()
+
+                    # Пропускаем каналы DarkSyndicate
+                    if "darksyndicate" in channel_name:
+                        continue
+
+                    # Проверяем, относится ли канал к целевой гильдии
+                    if guild_name.lower() in channel_name:
+                        try:
+                            await channel.delete(reason=f"Удаление гильдии {guild_name}")
+                            deletion_log.append(f"🗑️ Удален канал: #{channel.name}")
+                            deleted_channels += 1
+                            await asyncio.sleep(1)
+                        except discord.Forbidden:
+                            deletion_log.append(f"⚠️ Не удалось удалить канал {channel.name} (недостаточно прав)")
+                        except Exception as e:
+                            deletion_log.append(f"⚠️ Ошибка при удалении канала {channel.name}: {str(e)}")
+
+                # 3. Находим и удаляем роли гильдии
+                deleted_roles = 0
+                for role in guild.roles:
+                    role_name = role.name.lower()
+
+                    # Пропускаем основные роли
+                    if role.name in ["@everyone", "DarkSyndicate", "darksyndicate"]:
+                        continue
+
+                    # Проверяем, относится ли роль к целевой гильдии
+                    if guild_name.lower() in role_name:
+                        try:
+                            await role.delete(reason=f"Удаление гильдии {guild_name}")
+                            deletion_log.append(f"🎭 Удалена роль: {role.name}")
+                            deleted_roles += 1
+                            await asyncio.sleep(1)
+                        except discord.Forbidden:
+                            deletion_log.append(f"⚠️ Не удалось удалить роль {role.name} (недостаточно прав)")
+                        except Exception as e:
+                            deletion_log.append(f"⚠️ Ошибка при удалении роли {role.name}: {str(e)}")
+
+                # 4. Создаем отчет
+                report_embed = discord.Embed(
+                    title=f"✅ Удаление гильдии {guild_name} завершено",
+                    color=discord.Color.green()
+                )
+
+                report_embed.add_field(
+                    name="📊 Результаты",
+                    value=f"• 🚫 Забанено пользователей: {deleted_members}\n"
+                          f"• 🗑️ Удалено каналов: {deleted_channels}\n"
+                          f"• 🎭 Удалено ролей: {deleted_roles}",
+                    inline=False
+                )
+
+                # Добавляем детальный лог (первые 10 записей)
+                if deletion_log:
+                    log_text = "\n".join(deletion_log[:10])
+                    if len(deletion_log) > 10:
+                        log_text += f"\n... и еще {len(deletion_log) - 10} действий"
+                    report_embed.add_field(name="📝 Лог действий", value=log_text, inline=False)
+
+                report_embed.set_footer(text="Сервер очищен от информации о гильдии")
+
+                await ctx.send(embed=report_embed)
+
+            except Exception as e:
+                await ctx.send(f"❌ Произошла ошибка при удалении гильдии: {str(e)}")
+
+        # НОВАЯ КОМАНДА: Блокировка гильдии
+        @self.bot.command(name="lock_guild")
+        async def lock_guild_command(ctx, guild_name: str):
+            """Заблокировать гильдию (только доступ к каналам)"""
+            try:
+                # Проверяем права администратора
+                if not ctx.author.guild_permissions.administrator:
+                    await ctx.send("❌ Эта команда требует прав администратора!")
+                    return
+
+                # Проверяем, что команда не вызывается для DarkSyndicate
+                if guild_name.lower() in ["darksyndicate", "dark syndicate", "dark_syndicate"]:
+                    await ctx.send("❌ Эта команда не может быть использована для гильдии DarkSyndicate!")
+                    return
+
+                # Проверяем, что команда вызывается на сервере
+                if not ctx.guild:
+                    await ctx.send("❌ Эта команда может быть использована только на сервере!")
+                    return
+
+                # Создаем embed для подтверждения
+                embed = discord.Embed(
+                    title="🔒 Блокировка гильдии",
+                    description=f"Вы уверены, что хотите заблокировать гильдию **{guild_name}**?\n\n"
+                                f"Это действие:\n"
+                                f"• Заблокирует доступ ко всем каналам этой гильдии\n"
+                                f"• Доступ к каналам сохранится только у администраторов\n\n"
+                                f"**Это действие обратимо!**",
+                    color=discord.Color.orange()
+                )
+
+                # Создаем View с кнопками подтверждения
+                view = LockGuildConfirmView(guild_name)
+                await ctx.send(embed=embed, view=view)
+
+                # Ждем подтверждения
+                await view.wait()
+
+                if not view.confirmed:
+                    return
+
+                # Начинаем процесс блокировки
+                await ctx.send(f"🔒 Начинаю блокировку гильдии **{guild_name}**...")
+
+                guild = ctx.guild
+                locked_channels = 0
+
+                # Блокируем каналы гильдии
+                for channel in guild.channels:
+                    channel_name = channel.name.lower()
+
+                    # Пропускаем каналы DarkSyndicate
+                    if "darksyndicate" in channel_name:
+                        continue
+
+                    # Проверяем, относится ли канал к целевой гильдии
+                    if guild_name.lower() in channel_name:
+                        try:
+                            # Создаем разрешения, которые запрещают доступ всем, кроме администраторов
+                            overwrite = discord.PermissionOverwrite()
+                            overwrite.view_channel = False
+                            overwrite.send_messages = False
+                            overwrite.connect = False
+
+                            # Применяем разрешения ко всем ролям
+                            for role in guild.roles:
+                                await channel.set_permissions(role, overwrite=overwrite)
+
+                            # Разрешаем доступ администраторам
+                            admin_overwrite = discord.PermissionOverwrite()
+                            admin_overwrite.view_channel = True
+                            admin_overwrite.manage_channels = True
+
+                            await channel.set_permissions(guild.default_role, overwrite=overwrite)
+
+                            locked_channels += 1
+                            await asyncio.sleep(0.5)
+
+                        except Exception as e:
+                            await ctx.send(f"⚠️ Ошибка при блокировке канала {channel.name}: {str(e)}")
+
+                # Создаем отчет
+                embed = discord.Embed(
+                    title=f"🔒 Блокировка гильдии {guild_name} завершена",
+                    description=f"Заблокировано каналов: {locked_channels}\n\n"
+                                f"Теперь доступ к каналам гильдии имеют только администраторы.",
+                    color=discord.Color.orange()
+                )
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                await ctx.send(f"❌ Произошла ошибка при блокировке гильдии: {str(e)}")
+
         @self.bot.event
         async def on_command_error(ctx, error):
             if isinstance(error, commands.CommandNotFound):
@@ -1029,6 +1266,13 @@ class DiscordBot:
 • `!random 1-10` - случайное число от 1 до 10
 • `!random 7` - случайное число от 1 до 7
 
+**🔐 Команды управления гильдиями (администраторы):**
+
+`!delete_guild <название>` - удалить гильдию и все её данные
+`!lock_guild <название>` - заблокировать доступ к каналам гильдии
+
+**ВАЖНО:** Эти команды НЕ работают для гильдии DarkSyndicate!
+
 **🤖 Автоматические уведомления:**
 Бот автоматически отправляет уведомления о боссах и разломах за 10 минут до их появления.
             """
@@ -1292,8 +1536,6 @@ class DiscordBot:
                                     message += f"• {boss}\n"
                                 message += "\n"
 
-
-
                     # Отправляем сообщение с таймаутом
                     try:
                         await asyncio.wait_for(channel.send(message), timeout=10.0)
@@ -1318,7 +1560,6 @@ class DiscordBot:
             if not active_servers:
                 logger.info("📭 Нет активных серверов для отправки уведомлений о разломах")
                 return
-
 
             role_mention = f"@everyone"
 
