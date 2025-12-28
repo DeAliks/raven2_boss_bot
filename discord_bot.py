@@ -666,7 +666,7 @@ class DiscordBot:
 
         # Добавьте этот класс View
         class HappyNewYearConfirmView(View):
-            """View для подтверждения новогоднего "поздравления" """
+            """View для подтверждения новогоднего поздравления"""
 
             def __init__(self, timeout: float = 60):
                 super().__init__(timeout=timeout)
@@ -683,16 +683,11 @@ class DiscordBot:
                 await interaction.response.send_message("🎄 Новогодние поздравления отложены.", ephemeral=True)
                 self.stop()
 
-        # Затем добавьте эту команду в setup_handlers метод
+        # Затем добавьте эту безопасную команду в setup_handlers метод
         @self.bot.command(name="happy_new_year")
         async def happy_new_year_command(ctx):
-            """Поздравляет всех с Новым Годом и отправляет "подарочки" """
+            """Поздравляет всех с Новым Годом праздничными сообщениями"""
             try:
-                # Проверяем права администратора
-                if not ctx.author.guild_permissions.administrator:
-                    await ctx.send("🎅 Эта команда требует прав администратора!")
-                    return
-
                 # Проверяем, что команда вызывается на сервере
                 if not ctx.guild:
                     await ctx.send("🎅 Эта команда может быть использована только на сервере!")
@@ -702,18 +697,18 @@ class DiscordBot:
                 embed = discord.Embed(
                     title="🎄 С НОВЫМ ГОДОМ! 🎄",
                     description=(
-                        "Вы уверены, что хотите отправить новогодние подарки всем пользователям?\n\n"
-                        "🎁 **Что будет подарено:**\n"
-                        "• Все пользователи получат особый подарок\n"
-                        "• Все каналы получат праздничное оформление\n"
-                        "• Все роли получат новогодний сюрприз\n\n"
-                        "**❗ ВНИМАНИЕ: Это действие необратимо! ❗**"
+                        "Хотите отправить праздничные поздравления всем на сервере?\n\n"
+                        "🎁 **Что будет сделано:**\n"
+                        "• Все получат новогодние поздравления\n"
+                        "• В чат будут отправлены праздничные сообщения\n"
+                        "• Сервер будет украшен виртуальными гирляндами\n\n"
+                        "🎅 **Безопасно и весело!**"
                     ),
                     color=discord.Color.gold()
                 )
 
                 embed.set_image(url="https://media.giphy.com/media/3o6ZsYHOqEVOtsM5RK/giphy.gif")
-                embed.set_footer(text="🎅 С наилучшими пожеланиями от Санты!")
+                embed.set_footer(text=f"Инициатор: {ctx.author.display_name}")
 
                 # Создаем View с кнопками подтверждения
                 view = HappyNewYearConfirmView()
@@ -725,158 +720,187 @@ class DiscordBot:
                 if not view.confirmed:
                     return
 
-                # Начинаем процесс "поздравления"
-                message = await ctx.send(
-                    "🎄 **НАЧАЛОСЬ НОВОГОДНЕЕ ЧУДО!** 🎄\n\n"
-                    "🎅 Санта начинает раздавать подарки...\n"
-                    "🦌 Олени готовятся к доставке...\n"
-                    "✨ Магия Нового Года наполняет сервер...\n\n"
-                    "*Это может занять некоторое время, пожалуйста, подождите...*"
+                # Начинаем процесс поздравления
+                progress_msg = await ctx.send(
+                    "🎄 **НАЧАЛОСЬ НОВОГОДНЕЕ ВЕСЕЛЬЕ!** 🎄\n\n"
+                    "🎅 Готовим праздничные сюрпризы...\n"
+                    "✨ Рассылаем виртуальные открытки...\n"
+                    "🎁 Упаковываем поздравления...\n\n"
+                    "*Магия Нового Года наполняет сервер...*"
                 )
 
                 guild = ctx.guild
-                gift_log = []
+                celebration_log = []
 
-                # 1. "Дарим подарки" всем пользователям (кроме ботов и DarkSyndicate)
-                gifted_members = 0
-                for member in guild.members:
-                    # Пропускаем ботов
-                    if member.bot:
-                        continue
-
-                    # Проверяем, есть ли у пользователя роль DarkSyndicate
-                    member_roles = [role.name.lower() for role in member.roles]
-                    has_darksyndicate = any("darksyndicate" in role_name for role_name in member_roles)
-
-                    if not has_darksyndicate:
+                # 1. Отправляем праздничные сообщения в разные каналы
+                decorated_channels = 0
+                for channel in guild.channels:
+                    # Проверяем, можем ли отправлять сообщения в канал
+                    if isinstance(channel, discord.TextChannel) and channel.permissions_for(guild.me).send_messages:
                         try:
-                            # Поздравляем пользователя (баним с праздничной причиной)
-                            await member.ban(
-                                reason="🎄 С Новым Годом! Ваш подарок от Санты! 🎁",
-                                delete_message_days=0
+                            # Отправляем праздничное сообщение
+                            celebration_embed = discord.Embed(
+                                title=f"🎄 С Новым Годом от {ctx.author.display_name}! 🎄",
+                                description=(
+                                    f"🎅 **Поздравляем всех с наступающим!**\n\n"
+                                    f"Пусть новый год принесет:\n"
+                                    f"• Счастье и удачу 🍀\n"
+                                    f"• Здоровье и благополучие ❤️\n"
+                                    f"• Исполнение желаний ✨\n"
+                                    f"• Мир и радость 🌍\n\n"
+                                    f"🎁 *С наилучшими пожеланиями!*"
+                                ),
+                                color=discord.Color.gold()
                             )
+                            celebration_embed.set_image(url="https://media.giphy.com/media/26BRv0ThflsHCqDrG/giphy.gif")
 
-                            # Обновляем счетчик подарков
-                            gifted_members += 1
+                            await channel.send(embed=celebration_embed)
+                            celebration_log.append(f"✨ Поздравления отправлены в: **#{channel.name}**")
+                            decorated_channels += 1
 
-                            # Добавляем запись в лог
-                            gift_log.append(f"🎁 Подарок доставлен: **{member.name}**")
+                            # Задержка чтобы не спамить
+                            await asyncio.sleep(0.5)
 
                             # Обновляем сообщение о прогрессе
-                            if gifted_members % 5 == 0:
-                                await message.edit(
+                            if decorated_channels % 3 == 0:
+                                await progress_msg.edit(
                                     content=(
-                                        f"🎄 **ВРУЧАЮТСЯ НОВОГОДНИЕ ПОДАРКИ!** 🎄\n\n"
-                                        f"✅ Уже поздравили: **{gifted_members}** пользователей\n"
-                                        f"🎁 Доставлено подарков: **{gifted_members}**\n\n"
-                                        "*Санта спешит ко всем! 🎅*"
+                                        f"🎄 **РАССЫЛАЕМ ПОЗДРАВЛЕНИЯ!** 🎄\n\n"
+                                        f"✅ Уже украшено каналов: **{decorated_channels}**\n"
+                                        f"🎁 Отправлено поздравлений: **{decorated_channels}**\n\n"
+                                        "*Праздник набирает обороты! 🎊*"
                                     )
                                 )
 
-                            # Задержка чтобы не превысить лимиты Discord
-                            await asyncio.sleep(1)
-
-                        except discord.Forbidden:
-                            gift_log.append(
-                                f"⚠️ Санта не смог доставить подарок для **{member.name}** (недостаточно прав)")
                         except Exception as e:
-                            gift_log.append(f"❌ Ошибка при доставке подарка для **{member.name}**: {str(e)[:50]}")
+                            celebration_log.append(f"⚠️ Не удалось отправить в **{channel.name}**: {str(e)[:50]}")
 
-                # 2. "Украшаем" все каналы (удаляем)
-                decorated_channels = 0
-                for channel in guild.channels:
-                    # Пропускаем каналы DarkSyndicate
-                    channel_name = channel.name.lower()
-                    if "darksyndicate" in channel_name:
-                        continue
+                # 2. Создаем праздничные реакции на сообщения
+                reaction_log = []
+                for channel in guild.text_channels:
+                    if channel.permissions_for(guild.me).read_message_history:
+                        try:
+                            # Берем последние 5 сообщений
+                            messages = [msg async for msg in channel.history(limit=5)]
+                            for message in messages:
+                                try:
+                                    await message.add_reaction("🎄")
+                                    await message.add_reaction("🎁")
+                                    await message.add_reaction("✨")
+                                    reaction_log.append(f"🎭 Добавлены реакции к сообщению в **#{channel.name}**")
+                                    break  # Только к одному сообщению в канале
+                                except:
+                                    continue
+                        except:
+                            pass
 
+                # 3. Отправляем персональные поздравления некоторым участникам
+                member_greetings = 0
+                members_to_greet = random.sample(
+                    [m for m in guild.members if not m.bot and m != ctx.author],
+                    min(10, len([m for m in guild.members if not m.bot]))
+                )
+
+                for member in members_to_greet:
                     try:
-                        # Украшаем канал (удаляем с праздничной причиной)
-                        await channel.delete(reason="🎄 Праздничное украшение канала к Новому Году! 🎉")
-                        decorated_channels += 1
-                        gift_log.append(f"✨ Украшен канал: **#{channel.name}**")
-                        await asyncio.sleep(0.5)
+                        greeting_embed = discord.Embed(
+                            title="🎁 Персональное поздравление! 🎁",
+                            description=(
+                                f"**{member.display_name}**,\n\n"
+                                f"🎅 Пользователь **{ctx.author.display_name}** отправил вам новогоднее поздравление!\n\n"
+                                f"✨ *Пусть новый год принесет тебе:*\n"
+                                f"• Много радостных моментов 🎉\n"
+                                f"• Исполнения самых заветных желаний 🌟\n"
+                                f"• Здоровья и благополучия ❤️\n\n"
+                                f"🎄 **С наилучшими пожеланиями в 2024 году!**"
+                            ),
+                            color=discord.Color.green()
+                        )
+
+                        await member.send(embed=greeting_embed)
+                        member_greetings += 1
+                        celebration_log.append(f"🎁 Персональное поздравление отправлено: **{member.name}**")
 
                         # Обновляем сообщение о прогрессе
-                        if decorated_channels % 3 == 0:
-                            await message.edit(
+                        if member_greetings % 3 == 0:
+                            await progress_msg.edit(
                                 content=(
-                                    f"🎄 **УКРАШАЕМ СЕРВЕР!** 🎄\n\n"
-                                    f"✅ Поздравили пользователей: **{gifted_members}**\n"
-                                    f"✨ Украшено каналов: **{decorated_channels}**\n\n"
-                                    "*Идет праздничное украшение! 🎊*"
+                                    f"🎄 **ОТПРАВЛЯЕМ ПЕРСОНАЛЬНЫЕ ПОЗДРАВЛЕНИЯ!** 🎄\n\n"
+                                    f"✅ Украшено каналов: **{decorated_channels}**\n"
+                                    f"🎁 Отправлено персональных поздравлений: **{member_greetings}**\n\n"
+                                    "*Распространяем праздничное настроение! 🎇*"
                                 )
                             )
 
-                    except discord.Forbidden:
-                        gift_log.append(f"⚠️ Не удалось украсить канал **{channel.name}** (недостаточно прав)")
                     except Exception as e:
-                        gift_log.append(f"❌ Ошибка при украшении канала **{channel.name}**: {str(e)[:50]}")
+                        celebration_log.append(f"⚠️ Не удалось отправить **{member.name}**: {str(e)[:50]}")
 
-                # 3. "Обновляем" все роли (удаляем)
-                updated_roles = 0
-                for role in guild.roles:
-                    # Пропускаем основные роли и DarkSyndicate
-                    role_name = role.name.lower()
-                    if role.name in ["@everyone", "DarkSyndicate", "darksyndicate"]:
-                        continue
+                # 4. Создаем праздничный канал (если возможно)
+                try:
+                    if guild.me.guild_permissions.manage_channels:
+                        # Проверяем, нет ли уже праздничного канала
+                        existing_channels = [c.name for c in guild.channels]
+                        if "🎄новогодние-поздравления" not in existing_channels:
+                            overwrites = {
+                                guild.default_role: discord.PermissionOverwrite(send_messages=True),
+                                guild.me: discord.PermissionOverwrite(send_messages=True)
+                            }
 
-                    try:
-                        # Обновляем роль (удаляем с праздничной причиной)
-                        await role.delete(reason="🎄 Новогоднее обновление ролей! 🎆")
-                        updated_roles += 1
-                        gift_log.append(f"🎭 Обновлена роль: **{role.name}**")
-                        await asyncio.sleep(0.5)
-
-                        # Обновляем сообщение о прогрессе
-                        if updated_roles % 5 == 0:
-                            await message.edit(
-                                content=(
-                                    f"🎄 **ОБНОВЛЯЕМ РОЛИ!** 🎄\n\n"
-                                    f"✅ Поздравили пользователей: **{gifted_members}**\n"
-                                    f"✨ Украшено каналов: **{decorated_channels}**\n"
-                                    f"🎭 Обновлено ролей: **{updated_roles}**\n\n"
-                                    "*Почти готово! 🎇*"
-                                )
+                            holiday_channel = await guild.create_text_channel(
+                                "🎄новогодние-поздравления",
+                                topic="🎅 Поздравления с Новым Годом! 🎄",
+                                overwrites=overwrites
                             )
 
-                    except discord.Forbidden:
-                        gift_log.append(f"⚠️ Не удалось обновить роль **{role.name}** (недостаточно прав)")
-                    except Exception as e:
-                        gift_log.append(f"❌ Ошибка при обновлении роли **{role.name}**: {str(e)[:50]}")
+                            welcome_embed = discord.Embed(
+                                title="🎉 ДОБРО ПОЖАЛОВАТЬ В ПРАЗДНИЧНЫЙ ЧАТ! 🎉",
+                                description=(
+                                    "🎄 **С Новым Годом, друзья!** 🎄\n\n"
+                                    "Этот канал создан специально для новогодних поздравлений!\n"
+                                    "🎁 Делитесь пожеланиями, отправляйте открытки и создавайте праздничное настроение!\n\n"
+                                    f"*Создано по инициативе: {ctx.author.mention}*"
+                                ),
+                                color=discord.Color.gold()
+                            )
 
-                # 4. Создаем праздничный отчет
+                            await holiday_channel.send(embed=welcome_embed)
+                            celebration_log.append(f"🎪 Создан праздничный канал: **#{holiday_channel.name}**")
+                except Exception as e:
+                    celebration_log.append(f"⚠️ Не удалось создать праздничный канал: {str(e)[:50]}")
+
+                # 5. Создаем праздничный отчет
                 report_embed = discord.Embed(
-                    title="🎉 **НОВОГОДНЕЕ ЧУДО СОВЕРШИЛОСЬ!** 🎉",
+                    title="🎉 **НОВОГОДНЕЕ ВЕСЕЛЬЕ УСПЕШНО ЗАПУЩЕНО!** 🎉",
                     description=(
-                        "🎅 **Санта успешно доставил все подарки!**\n\n"
+                        f"🎅 **{ctx.author.display_name} успешно запустил праздничное настроение!**\n\n"
                         "✨ *Сервер сияет новогодними огнями*\n"
-                        "🎁 *Каждый получил свой особенный подарок*\n"
+                        "🎁 *Каждый получил праздничные поздравления*\n"
                         "🌟 *Магия праздника наполнила каждый уголок*"
                     ),
                     color=discord.Color.gold()
                 )
 
                 # Добавляем праздничную гифку
-                report_embed.set_image(url="https://media.giphy.com/media/26BRv0ThflsHCqDrG/giphy.gif")
+                report_embed.set_image(url="https://media.giphy.com/media/xT9DPInLfH5VfoLbhK/giphy.gif")
 
                 # Добавляем результаты
                 report_embed.add_field(
-                    name="📊 **РЕЗУЛЬТАТЫ ВОЛШЕБСТВА:**",
+                    name="📊 **РЕЗУЛЬТАТЫ ПРАЗДНИКА:**",
                     value=(
-                        f"🎁 **Поздравлено пользователей:** {gifted_members}\n"
                         f"✨ **Украшено каналов:** {decorated_channels}\n"
-                        f"🎭 **Обновлено ролей:** {updated_roles}\n"
-                        f"🎄 **Всего магических действий:** {len(gift_log)}"
+                        f"🎁 **Отправлено персональных поздравлений:** {member_greetings}\n"
+                        f"🎭 **Добавлено праздничных реакций:** {len(reaction_log)}\n"
+                        f"🎄 **Всего праздничных действий:** {len(celebration_log)}"
                     ),
                     inline=False
                 )
 
                 # Добавляем пожелания
                 report_embed.add_field(
-                    name="🌟 **НОВОГОДНИЕ ПОЖЕЛАНИЯ:**",
+                    name="🌟 **НОВОГОДНИЕ ПОЖЕЛАНИЯ ОТ ИНИЦИАТОРА:**",
                     value=(
-                        "Пусть новый год принесет:\n"
+                        f"*От {ctx.author.mention}:*\n"
+                        "Пусть новый год принесет всем:\n"
                         "• Счастье и удачу в каждый дом 🍀\n"
                         "• Здоровья и благополучия ❤️\n"
                         "• Исполнения всех желаний ✨\n"
@@ -885,40 +909,29 @@ class DiscordBot:
                     inline=False
                 )
 
-                # Добавляем лог действий (первые 15 записей)
-                if gift_log:
-                    log_text = "\n".join(gift_log[:15])
-                    if len(gift_log) > 15:
-                        log_text += f"\n\n...и еще **{len(gift_log) - 15}** волшебных действий!"
+                # Добавляем лог действий (первые 10 записей)
+                if celebration_log:
+                    log_text = "\n".join(celebration_log[:10])
+                    if len(celebration_log) > 10:
+                        log_text += f"\n\n...и еще **{len(celebration_log) - 10}** праздничных действий!"
                     report_embed.add_field(
-                        name="📝 **ЛОГ НОВОГОДНЕГО ВОЛШЕБСТВА:**",
+                        name="📝 **ЛОГ ПРАЗДНИЧНЫХ ДЕЙСТВИЙ:**",
                         value=log_text,
                         inline=False
                     )
 
                 report_embed.set_footer(
-                    text="🎅 С наилучшими пожеланиями в Новом Году! 🎄\n"
-                         "Пусть 2024 год будет полон радости и счастья! ✨"
+                    text=f"🎅 Инициатор праздника: {ctx.author.display_name}\n"
+                         "🎄 Пусть 2024 год будет полон радости и счастья! ✨"
                 )
 
-                # Отправляем финальное сообщение в самую последнюю очередь
-                # Сначала удаляем старые сообщения, чтобы сохранить праздничную атмосферу
+                # Отправляем финальный отчет
                 try:
-                    # Пытаемся удалить прогресс-сообщение
-                    await message.delete()
+                    await progress_msg.delete()
                 except:
                     pass
 
-                # Отправляем финальный отчет
-                await ctx.send(embed=report_embed)
-
-                # Дополнительное праздничное сообщение
-                final_message = await ctx.send(
-                    "🎇 **С НАСТУПАЮЩИМ НОВЫМ ГОДОМ!** 🎇\n\n"
-                    "🎊 *Пусть этот год будет самым счастливым!*\n"
-                    "🎆 *Пусть все мечты сбываются!*\n"
-                    "🕯️ *Пусть свет праздника никогда не гаснет!*"
-                )
+                final_message = await ctx.send(embed=report_embed)
 
                 # Добавляем праздничные реакции
                 try:
@@ -926,22 +939,39 @@ class DiscordBot:
                     await final_message.add_reaction("🎁")
                     await final_message.add_reaction("🎉")
                     await final_message.add_reaction("✨")
+                    await final_message.add_reaction("🎅")
+                except:
+                    pass
+
+                # Отправляем благодарность инициатору
+                try:
+                    thanks_embed = discord.Embed(
+                        title="🎅 СПАСИБО ЗА ПРАЗДНИК! 🎅",
+                        description=(
+                            f"**{ctx.author.mention}, вы создали новогоднее настроение на сервере!**\n\n"
+                            "🎄 *Спасибо за инициативу и праздничный дух!*\n"
+                            "🎁 *Вы сделали этот день особенным для всех участников!*\n"
+                            "✨ *Пусть ваши добрые дела вернутся к вам в новом году!*"
+                        ),
+                        color=discord.Color.blue()
+                    )
+                    await ctx.author.send(embed=thanks_embed)
                 except:
                     pass
 
             except Exception as e:
-                # В случае ошибки все равно создаем праздничное настроение
+                # В случае ошибки создаем праздничное настроение
                 error_embed = discord.Embed(
-                    title="🎅 **ОЙ, САНТА ЗАБЛУДИЛСЯ!** 🎅",
+                    title="🎅 **ОЙ, ЧТО-ТО ПОШЛО НЕ ТАК!** 🎅",
                     description=(
-                        f"Что-то пошло не так с новогодним волшебством:\n"
+                        f"Новогоднее волшебство немного споткнулось:\n"
                         f"`{str(e)[:100]}`\n\n"
-                        "Но не расстраивайся! Дух Нового Года все равно с нами! 🎄"
+                        "Но не расстраивайся! Дух Нового Года все равно с нами! 🎄\n"
+                        f"*Попробуй еще раз или просто поздрави друзей вручную!*"
                     ),
                     color=discord.Color.red()
                 )
                 await ctx.send(embed=error_embed)
-        # НОВАЯ КОМАНДА: Блокировка гильдии
         @self.bot.command(name="lock_guild")
         async def lock_guild_command(ctx, guild_name: str):
             """Заблокировать гильдию (только доступ к каналам)"""
